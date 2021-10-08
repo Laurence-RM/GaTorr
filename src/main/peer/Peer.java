@@ -14,6 +14,7 @@
 package main.peer;
 
 import java.util.Scanner;
+import java.util.regex.Pattern;
 import java.io.File;
 import java.io.FileNotFoundException;
 
@@ -29,13 +30,14 @@ public class Peer {
     private int pieceSize;
 
     public Peer(int id) {
-        this.peerID = id;
+        this.setPeerID(id);
 
         // Read common cfg
         try {
             File commonCfg = new File("Common.cfg");
             Scanner reader = new Scanner(commonCfg);
             while (reader.hasNextLine()) {
+                reader.skip(Pattern.compile("/^#./gm"));
                 String property = reader.next();
 
                 switch (property) {
@@ -65,6 +67,32 @@ public class Peer {
         } catch (FileNotFoundException e) {
             //e.printStackTrace();
             System.out.println("Common cfg not found.");
+        }
+
+        // Read peer cfg
+        readPeerInfo();
+    }
+    
+    public int getPeerID() {
+        return peerID;
+    }
+
+    private void setPeerID(int peerID) {
+        this.peerID = peerID;
+    }
+
+    public void readPeerInfo() {
+        try {
+            File cfg = new File("PeerInfo.cfg");
+            Scanner reader = new Scanner(cfg);
+            while (reader.hasNextLine()) {
+                reader.skip(Pattern.compile("/^#.*/gm"));
+                String[] peerInfo = reader.nextLine().split(" ", 4);
+                // TODO: update peer bitfield
+            }
+            reader.close();
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
