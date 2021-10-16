@@ -21,6 +21,8 @@ import java.io.FileNotFoundException;
 public class Peer {
 
     private int peerID;
+    private String hostName;
+    private int port;
 
     private int numPreferredNeighbors;
     private int unchokingInterval;
@@ -29,15 +31,22 @@ public class Peer {
     private int fileSize;
     private int pieceSize;
 
+    private int pieceCount;
+    private int lastPieceSize;
+
+    private BitfieldObj bitfield;
+    private String[][] priorPeers;
+
     public Peer(int id) {
         this.setPeerID(id);
 
         // Read common cfg
+        Scanner reader = null;
         try {
             File commonCfg = new File("Common.cfg");
-            Scanner reader = new Scanner(commonCfg);
+            reader = new Scanner(commonCfg);
             while (reader.hasNextLine()) {
-                reader.skip(Pattern.compile("/^#./gm"));
+                // reader.skip(Pattern.compile("/^#./gm"));
                 String property = reader.next();
 
                 switch (property) {
@@ -63,12 +72,21 @@ public class Peer {
                         break;
                 }
             }
-            reader.close();
         } catch (FileNotFoundException e) {
             //e.printStackTrace();
             System.out.println("Common cfg not found.");
-        }
+            return;
+        } finally {
+            try { 
+                reader.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
+            pieceCount = (int) Math.ceil(this.fileSize / this.pieceSize); // Number of pieces
+            lastPieceSize = this.fileSize - ((this.pieceCount - 1) * this.pieceSize); // Find remainder size of last piece
+        }
+        
         // Read peer cfg
         readPeerInfo();
     }
@@ -82,17 +100,40 @@ public class Peer {
     }
 
     public void readPeerInfo() {
+        Scanner reader = null;
         try {
             File cfg = new File("PeerInfo.cfg");
-            Scanner reader = new Scanner(cfg);
+            reader = new Scanner(cfg);
             while (reader.hasNextLine()) {
-                reader.skip(Pattern.compile("/^#.*/gm"));
+                // reader.skip(Pattern.compile("/^#.*/gm"));
                 String[] peerInfo = reader.nextLine().split(" ", 4);
-                // TODO: update peer bitfield
+
+                if (peerInfo[0].equals(Integer.toString(peerID))) {
+                    // Create directory
+                    File pf = new File("peer_" + peerInfo[0]);
+                    if (pf.mkdir()) {
+                        System.out.println("Created directory for peer " + peerInfo[0]);
+                    }
+                    // Save properties
+                    this.hostName = peerInfo[1];
+                    this.port = Integer.parseInt(peerInfo[2]);
+                    // Prepare Bitfield
+                    if (peerInfo[3].equals("1")) {
+                        this.bitfield = new BitfieldObj(pieceCount, true);
+                        bitfield.printData(); //TODO: Remove
+                    }
+                    break;
+                }
             }
             reader.close();
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            try {
+                reader.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
