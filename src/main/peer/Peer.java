@@ -13,6 +13,7 @@
 
 package main.peer;
 
+import java.util.ArrayList;
 import java.util.Scanner;
 import java.util.regex.Pattern;
 import java.io.File;
@@ -35,7 +36,7 @@ public class Peer {
     private int lastPieceSize;
 
     private BitfieldObj bitfield;
-    private String[][] priorPeers;
+    private ArrayList<String[]> priorPeers;
 
     public Peer(int id) {
         this.setPeerID(id);
@@ -104,6 +105,9 @@ public class Peer {
         try {
             File cfg = new File("PeerInfo.cfg");
             reader = new Scanner(cfg);
+
+            priorPeers = new ArrayList<String[]>();
+
             while (reader.hasNextLine()) {
                 // reader.skip(Pattern.compile("/^#.*/gm"));
                 String[] peerInfo = reader.nextLine().split(" ", 4);
@@ -120,9 +124,14 @@ public class Peer {
                     // Prepare Bitfield
                     if (peerInfo[3].equals("1")) {
                         this.bitfield = new BitfieldObj(pieceCount, true);
-                        bitfield.printData(); //TODO: Remove
+
+                        //TODO: Check that file is actually complete
                     }
                     break;
+                }
+                else {
+                    // Save previous peers on list to connect to later
+                    priorPeers.add(peerInfo);
                 }
             }
             reader.close();
