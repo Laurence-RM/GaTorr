@@ -15,9 +15,17 @@ package main.peer;
 
 import java.util.ArrayList;
 import java.util.Scanner;
-import java.util.regex.Pattern;
+
+import main.peer.message.Handshake;
+import test.Server;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.net.*;
 
 public class Peer {
 
@@ -47,7 +55,6 @@ public class Peer {
             File commonCfg = new File("Common.cfg");
             reader = new Scanner(commonCfg);
             while (reader.hasNextLine()) {
-                // reader.skip(Pattern.compile("/^#./gm"));
                 String property = reader.next();
 
                 switch (property) {
@@ -100,16 +107,16 @@ public class Peer {
         this.peerID = peerID;
     }
 
-    public void readPeerInfo() {
+    private void readPeerInfo() {
         Scanner reader = null;
         try {
             File cfg = new File("PeerInfo.cfg");
             reader = new Scanner(cfg);
 
+            boolean selfFound = false;
             priorPeers = new ArrayList<String[]>();
 
             while (reader.hasNextLine()) {
-                // reader.skip(Pattern.compile("/^#.*/gm"));
                 String[] peerInfo = reader.nextLine().split(" ", 4);
 
                 if (peerInfo[0].equals(Integer.toString(peerID))) {
@@ -127,6 +134,7 @@ public class Peer {
 
                         //TODO: Check that file is actually complete
                     }
+                    selfFound = true;
                     break;
                 }
                 else {
@@ -134,7 +142,11 @@ public class Peer {
                     priorPeers.add(peerInfo);
                 }
             }
-            reader.close();
+            if (!selfFound) {
+                System.out.printf("Peer %d not found in PeerInfo.cfg, could not start process.\n", peerID);
+                reader.close();
+                System.exit(0);
+            }
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -146,9 +158,88 @@ public class Peer {
         }
     }
 
+    // Handler for incoming peer connections
+    private class Handler extends Thread {
+        private Socket connection;
+        private int clientNumber;
+        private int ID;
+        private DataInputStream in;
+        private DataOutputStream out;
+
+        public Handler(Socket connection, int cliNum) {
+            this.connection = connection;
+            this.clientNumber = cliNum;
+        }
+
+        public void run() {
+            try {
+                // Initialize streams
+                out = new DataOutputStream(connection.getOutputStream());
+                out.flush();
+                in = new DataInputStream(connection.getInputStream());
+                try {
+                    // Wait for handshake
+                    while(true) {
+                        byte[] handshakeMsg = new byte[32];
+                        // Receive hs message
+                        in.readFully(handshakeMsg);
+                        this.ID = Handshake.validateMessage(handshakeMsg);
+
+                        if (ID != -1) {
+                            //Send back handshake
+                            System.out.println("Handshake received from peer "+ID);
+                            break;
+                        } else {
+                            System.out.println("Invalid Handshake received...");
+                            continue;
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
     public static void main(String[] args) {
+        // Create peer for peerProcess
+        // Check configs
+        // Send HS to prior peers (or skip if none)
+        // Wait for responses
         try{
-            Peer pTest = new Peer(Integer.parseInt(args[0]));
+            Peer peer = new Peer(Integer.parseInt(args[0]));
+            ServerSocket listener = new ServerSocket(peer.port);
+            int cliNumber = 1;
+
+            for (String[] p : peer.priorPeers) {
+                System.out.println("Attempting handshake with peer "+p[0]);
+                try {
+                    Socket request = new Socket(p[1], Integer.parseInt(p[2]));
+                    DataOutputStream out = new DataOutputStream(request.getOutputStream());
+                    out.flush();
+                    DataInputStream in = new DataInputStream(request.getInputStream());
+
+                    // Send handshake
+                    Handshake hs = new Handshake(peer.peerID);
+                    out.write(hs.getMessage());
+                    request.close();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            try {
+                while(true) {
+                    peer.new Handler(listener.accept(), cliNumber).start();;
+                    System.out.println("Client connected: #" + cliNumber++);
+                }
+            } finally {
+                listener.close();
+            }
+            
         } catch (Exception e) {
             e.printStackTrace();
             //System.out.println("Improper args. Missing numerical Peer ID");
