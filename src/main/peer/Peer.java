@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.Scanner;
 
 import main.peer.message.Handshake;
-import test.Server;
+import main.peer.message.Message;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -44,7 +44,73 @@ public class Peer {
     private int lastPieceSize;
 
     private BitfieldObj bitfield;
-    private ArrayList<String[]> priorPeers;
+    private ArrayList<PeerInfo> priorPeers;
+
+    public class PeerInfo {
+        public int ID;
+        public String hostname;
+        public int port;
+        public boolean complete = false;
+        public DataInputStream in_steam;
+        public DataOutputStream out_stream;
+        public Socket connection;
+
+        public PeerInfo(String[] info) {
+            this.ID = Integer.parseInt(info[0]);
+            this.hostname = info[1];
+            this.port = Integer.parseInt(info[2]);
+            if (info[3].equals("1")) {
+                this.complete = true;
+            }
+        }
+
+        protected void finalize() {
+            try {
+                this.connection.close();
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+            finally {
+                System.out.printf("Connection with peer %s closed from %s:%d", this.ID, this.hostname, this.port);
+            }
+        }
+
+        public void establishConnection(Socket s) {
+            try {
+                this.connection = new Socket(this.hostname, this.port);
+                this.out_stream = new DataOutputStream(this.connection.getOutputStream());
+                this.out_stream.flush();
+                this.in_steam = new DataInputStream(this.connection.getInputStream());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void sendMessage(Message m) {
+            try {
+                out_stream.write(m.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void sendMessage(Handshake h) {
+            try {
+                out_stream.write(h.getMessage());
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        public void sendMessage(byte[] b) {
+            try {
+                out_stream.write(b);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }            
+        }
+    }
 
     public Peer(int id) {
         this.setPeerID(id);
@@ -108,30 +174,32 @@ public class Peer {
     }
 
     private void readPeerInfo() {
+        // Read information from peer config file
         Scanner reader = null;
         try {
             File cfg = new File("PeerInfo.cfg");
             reader = new Scanner(cfg);
 
             boolean selfFound = false;
-            priorPeers = new ArrayList<String[]>();
-
+            priorPeers = new ArrayList<PeerInfo>();
+            
             while (reader.hasNextLine()) {
-                String[] peerInfo = reader.nextLine().split(" ", 4);
-
-                if (peerInfo[0].equals(Integer.toString(peerID))) {
+                String[] peerInfo_str = reader.nextLine().split(" ", 4);
+                PeerInfo p = new PeerInfo(peerInfo_str);
+                
+                if (p.ID == peerID) {
                     // Create directory
-                    File pf = new File("peer_" + peerInfo[0]);
+                    File pf = new File("peer_" + p.ID);
                     if (pf.mkdir()) {
-                        System.out.println("Created directory for peer " + peerInfo[0]);
+                        System.out.println("Created directory for peer " + p.ID);
                     }
                     // Save properties
-                    this.hostName = peerInfo[1];
-                    this.port = Integer.parseInt(peerInfo[2]);
+                    this.hostName = p.hostname;
+                    this.port = p.port;
                     // Prepare Bitfield
-                    if (peerInfo[3].equals("1")) {
+                    if (p.complete) {
                         this.bitfield = new BitfieldObj(pieceCount, true);
-
+                        
                         //TODO: Check that file is actually complete
                     }
                     selfFound = true;
@@ -139,7 +207,7 @@ public class Peer {
                 }
                 else {
                     // Save previous peers on list to connect to later
-                    priorPeers.add(peerInfo);
+                    priorPeers.add(p);
                 }
             }
             if (!selfFound) {
@@ -161,14 +229,12 @@ public class Peer {
     // Handler for incoming peer connections
     private class Handler extends Thread {
         private Socket connection;
-        private int clientNumber;
         private int ID;
         private DataInputStream in;
         private DataOutputStream out;
 
-        public Handler(Socket connection, int cliNum) {
+        public Handler(Socket connection) {
             this.connection = connection;
-            this.clientNumber = cliNum;
         }
 
         public void run() {
@@ -196,6 +262,10 @@ public class Peer {
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
+                } finally {
+                    in.close();
+                    out.close();
+                    connection.close();
                 }
             }
             catch (Exception e) {
@@ -212,20 +282,13 @@ public class Peer {
         try{
             Peer peer = new Peer(Integer.parseInt(args[0]));
             ServerSocket listener = new ServerSocket(peer.port);
-            int cliNumber = 1;
 
-            for (String[] p : peer.priorPeers) {
-                System.out.println("Attempting handshake with peer "+p[0]);
+            for (PeerInfo p : peer.priorPeers) {
+                System.out.println("Attempting handshake with peer " + p.ID);
                 try {
-                    Socket request = new Socket(p[1], Integer.parseInt(p[2]));
-                    DataOutputStream out = new DataOutputStream(request.getOutputStream());
-                    out.flush();
-                    DataInputStream in = new DataInputStream(request.getInputStream());
-
                     // Send handshake
                     Handshake hs = new Handshake(peer.peerID);
-                    out.write(hs.getMessage());
-                    request.close();
+                    p.sendMessage(hs);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -233,8 +296,7 @@ public class Peer {
 
             try {
                 while(true) {
-                    peer.new Handler(listener.accept(), cliNumber).start();;
-                    System.out.println("Client connected: #" + cliNumber++);
+                    peer.new Handler(listener.accept()).start();
                 }
             } finally {
                 listener.close();
