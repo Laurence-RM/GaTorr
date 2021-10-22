@@ -53,6 +53,8 @@ public class Peer {
         public String hostname;
         public int port;
         public boolean complete = false;
+        public BitfieldObj bf;
+
         public DataInputStream in;
         public DataOutputStream out;
         public Socket connection;
@@ -213,6 +215,9 @@ public class Peer {
                         
                         //TODO: Check that file is actually complete
                     }
+                    else {
+                        this.bitfield = new BitfieldObj(pieceCount);
+                    }
                     selfFound = true;
                     break;
                 }
@@ -261,10 +266,10 @@ public class Peer {
             try {
                 // Receive handshake message
                 byte[] handshakeMsg = new byte[32];
-                p.in.readFully(handshakeMsg);
-                int id_in = Handshake.validateMessage(handshakeMsg);
-                
+                p.in.readFully(handshakeMsg); // Blocks thread until 32 bytes are available
+
                 // Validate handshake
+                int id_in = Handshake.validateMessage(handshakeMsg);
                 if (id_in != -1) {
                     //Send back handshake
                     System.out.println("Handshake received from peer "+id_in);
@@ -289,9 +294,59 @@ public class Peer {
                 // Exchange bitfields
                 p.sendMessage(new Bitfield(bitfield));
                 
+                // Read in length and type
+                int len = p.in.readInt();
+                byte type = p.in.readByte();
+
+                // Check type matches bitfield
+                if (type == Message.BITFIELD) {
+                    byte[] bf_data = new byte[len-1];
+                    p.in.readFully(bf_data);
+                    p.bf = new BitfieldObj(bf_data, pieceCount);
+                    System.out.printf("Bitfield received from peer %d: ", p.ID);
+                    p.bf.printData();
+                }
+                
+                // Send Interested or Not Interested based on bitfield
+
                 // Wait for other messages
                 while(true) {
-
+                    len = p.in.readInt();
+                    type = p.in.readByte();
+                    if (type >= 0 && type <= 7 && len > 0) {
+                        byte[] data = new byte[len-1];
+                        p.in.readFully(data);
+                    }
+                    switch (type) {
+                        case Message.CHOKE:
+                            // Handle choke msg here
+                            break;
+                        case Message.UNCHOKE:
+                            // Handle unchoke
+                            break;
+                        case Message.INTERESTED:
+                            // Handle interested
+                            break; 
+                        case Message.NOTINTERESTED:
+                            // Handle notinterested
+                            break;
+                        case Message.HAVE:
+                            // Handle have
+                            break;
+                        case Message.BITFIELD:
+                            // Handle bitfield
+                            // Note: should not be receiving more bitfields after first
+                            break;
+                        case Message.REQUEST:
+                            // Handle unchoke
+                            break;
+                        case Message.PIECE:
+                            // Handle piece
+                            break;
+                        default:
+                            // Could not identify message type
+                            break;
+                    }
                 }
             } catch (IOException e) {
                 System.out.println("Peer "+p.ID+" disconnected.");
@@ -321,7 +376,7 @@ public class Peer {
             try {
                 System.out.println("Listening for peers on port " + peer.port);
                 while(true) {
-                    peer.new Handler(listener.accept()).start();
+                    peer.new Handler(listener.accept()).start(); // Blocks until connection attempted
                     // System.out.println("New connection...");
                 }
             } finally {
