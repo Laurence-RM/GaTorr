@@ -8,7 +8,7 @@ public class BitfieldObj {
     private int leftoverBits = 0;
     
     public BitfieldObj(int size, boolean full) {
-        // Size corresponds to the number of bits
+        // Size corresponds to the number of bits/pieces
         if (size <= 0) { throw new IllegalArgumentException("Bitfield needs to be larger than 0."); }
 
         setData(new byte[(int) Math.ceil(size/8)]); // create an array of bytes that can support the number of bits 
@@ -26,6 +26,11 @@ public class BitfieldObj {
 
     public BitfieldObj(int size) {
         this(size, false);
+    }
+
+    public BitfieldObj(byte[] data_, int size) {
+        this.data = data_;
+        this.leftoverBits = size - ((data.length) * 8);
     }
 
     public byte[] getData() {
