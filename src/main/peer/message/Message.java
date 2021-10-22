@@ -19,6 +19,8 @@
 
 package main.peer.message;
 
+import java.io.ByteArrayOutputStream;
+
 public class Message {
 
     // Define static types
@@ -53,6 +55,18 @@ public class Message {
 
     public byte[] getPayload() {
         return this.payload;
+    }
+
+    public byte[] getMessage() {
+        if (this.length == 0) {
+            return new byte[]{};
+        }
+        ByteArrayOutputStream b_out = new ByteArrayOutputStream(this.length);
+        b_out.write(this.length);
+        b_out.write(this.type);
+        b_out.write(this.payload, 0, this.payload.length);
+
+        return b_out.toByteArray();
     }
     
 }
