@@ -7,7 +7,7 @@ public class Have extends Message {
     private int index;
 
     public Have(int index_) {
-        super((byte) 4, Message.HAVE, Utils.intToByteArray(index_));
+        super(Message.HAVE, Utils.intToByteArray(index_));
         this.index = index_;
     }
 
