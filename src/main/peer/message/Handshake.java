@@ -53,10 +53,4 @@ public class Handshake {
         inBytes.read(id, 0, 4);
         return Utils.byteArrayToInt(id);
     }
-
-    public static void main(String args[]) {
-        Handshake hs = new Handshake(1001);
-        int res = validateMessage(hs.getMessage());
-        System.out.println(res);
-    }
 }

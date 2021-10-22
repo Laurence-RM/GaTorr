@@ -16,6 +16,7 @@ package main.peer;
 import java.util.ArrayList;
 import java.util.Scanner;
 
+import main.peer.message.Bitfield;
 import main.peer.message.Handshake;
 import main.peer.message.Message;
 
@@ -25,6 +26,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.net.*;
 
 public class Peer {
@@ -47,12 +49,12 @@ public class Peer {
     private ArrayList<PeerInfo> priorPeers;
 
     public class PeerInfo {
-        public int ID;
+        public int ID;  // TODO: Should ID be string to store leading zeros?
         public String hostname;
         public int port;
         public boolean complete = false;
-        public DataInputStream in_steam;
-        public DataOutputStream out_stream;
+        public DataInputStream in;
+        public DataOutputStream out;
         public Socket connection;
 
         public PeerInfo(String[] info) {
@@ -64,51 +66,60 @@ public class Peer {
             }
         }
 
+        public PeerInfo() {}
+
         protected void finalize() {
             try {
                 this.connection.close();
-            }
-            catch (Exception e) {
-                e.printStackTrace();
+            } catch (IOException e) {
+                System.out.println("No connection with peer "+ID+" to close.");
+                return;
             }
             finally {
-                System.out.printf("Connection with peer %s closed from %s:%d", this.ID, this.hostname, this.port);
+                System.out.printf("Connection with peer %s closed from %s:%d\n", this.ID, this.hostname, this.port);
+            }
+        }
+
+        public void establishConnection() {
+            try {
+                if (connection == null) {
+                    this.connection = new Socket(this.hostname, this.port);
+                }
+                this.out = new DataOutputStream(this.connection.getOutputStream());
+                this.out.flush();
+                this.in = new DataInputStream(this.connection.getInputStream());
+            } catch (IOException e) {
+                System.out.println("Error establishing connection with peer " + ID);
             }
         }
 
         public void establishConnection(Socket s) {
-            try {
-                this.connection = new Socket(this.hostname, this.port);
-                this.out_stream = new DataOutputStream(this.connection.getOutputStream());
-                this.out_stream.flush();
-                this.in_steam = new DataInputStream(this.connection.getInputStream());
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            this.connection = s;
+            establishConnection();
         }
 
         public void sendMessage(Message m) {
             try {
-                out_stream.write(m.getMessage());
-            } catch (Exception e) {
-                e.printStackTrace();
+                out.write(m.getMessage());
+            } catch (IOException e) {
+                System.out.println("Connection Error: Could not send message to peer "+ID);
             }
         }
 
         public void sendMessage(Handshake h) {
             try {
-                out_stream.write(h.getMessage());
-            } catch (Exception e) {
-                e.printStackTrace();
+                out.write(h.getMessage());
+            } catch (IOException e) {
+                System.out.println("Connection Error: Could not send message to peer " + ID);
             }
         }
 
         public void sendMessage(byte[] b) {
             try {
-                out_stream.write(b);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }            
+                out.write(b);
+            } catch (IOException e) {
+                System.out.println("Connection Error: Could not send message to peer " + ID);
+            }         
         }
     }
 
@@ -228,48 +239,62 @@ public class Peer {
 
     // Handler for incoming peer connections
     private class Handler extends Thread {
-        private Socket connection;
-        private int ID;
-        private DataInputStream in;
-        private DataOutputStream out;
+        PeerInfo p;
+        boolean shook = false;
 
         public Handler(Socket connection) {
-            this.connection = connection;
+            this.p = new PeerInfo();
+            p.ID = 0;
+
+            // Initialize streams
+            p.establishConnection(connection);
+            p.hostname = connection.getRemoteSocketAddress().toString();
+            p.port = connection.getPort();
+        }
+
+        public Handler(PeerInfo p_) {
+            this.p = p_;
+            this.shook = true;
         }
 
         public void run() {
             try {
-                // Initialize streams
-                out = new DataOutputStream(connection.getOutputStream());
-                out.flush();
-                in = new DataInputStream(connection.getInputStream());
-                try {
-                    // Wait for handshake
-                    while(true) {
-                        byte[] handshakeMsg = new byte[32];
-                        // Receive hs message
-                        in.readFully(handshakeMsg);
-                        this.ID = Handshake.validateMessage(handshakeMsg);
-
-                        if (ID != -1) {
-                            //Send back handshake
-                            System.out.println("Handshake received from peer "+ID);
-                            break;
+                // Receive handshake message
+                byte[] handshakeMsg = new byte[32];
+                p.in.readFully(handshakeMsg);
+                int id_in = Handshake.validateMessage(handshakeMsg);
+                
+                // Validate handshake
+                if (id_in != -1) {
+                    //Send back handshake
+                    System.out.println("Handshake received from peer "+id_in);
+                    if (!shook) {
+                        System.out.println("Returning handshake from peer " + id_in);
+                        p.sendMessage(new Handshake(peerID));
+                        p.ID = id_in;
+                    } else {
+                        if (id_in != p.ID) {
+                            // Received peer ID does not match expected ID
+                            System.out.printf("ERROR: Expected peer %d but received %d during Handshake", p.ID, id_in);
                         } else {
-                            System.out.println("Invalid Handshake received...");
-                            continue;
+                            System.out.println("Handshake from " + p.ID + " confirmed.");
                         }
                     }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                } finally {
-                    in.close();
-                    out.close();
-                    connection.close();
+                } else {
+                    System.out.println("Invalid Handshake received...");
+                    p.finalize();
+                    return;
                 }
-            }
-            catch (Exception e) {
-                e.printStackTrace();
+
+                // Exchange bitfields
+                p.sendMessage(new Bitfield(bitfield));
+                
+                // Wait for other messages
+                while(true) {
+
+                }
+            } catch (IOException e) {
+                System.out.println("Peer "+p.ID+" disconnected.");
             }
         }
     }
@@ -285,18 +310,19 @@ public class Peer {
 
             for (PeerInfo p : peer.priorPeers) {
                 System.out.println("Attempting handshake with peer " + p.ID);
-                try {
-                    // Send handshake
-                    Handshake hs = new Handshake(peer.peerID);
-                    p.sendMessage(hs);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+                // Connect to peer
+                p.establishConnection();
+                // Send handshake
+                Handshake hs = new Handshake(peer.peerID);
+                p.sendMessage(hs);
+                peer.new Handler(p).start();
             }
 
             try {
+                System.out.println("Listening for peers on port " + peer.port);
                 while(true) {
                     peer.new Handler(listener.accept()).start();
+                    // System.out.println("New connection...");
                 }
             } finally {
                 listener.close();
