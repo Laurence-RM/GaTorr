@@ -303,8 +303,8 @@ public class peerProcess {
                     byte[] bf_data = new byte[len-1];
                     p.in.readFully(bf_data);
                     p.bf = new BitfieldObj(bf_data, pieceCount);
-                    System.out.printf("Bitfield received from peer %d: ", p.ID);
-                    p.bf.printData();
+                    System.out.printf("Bitfield received from peer %d\n", p.ID);
+                    //p.bf.printData();
                 }
                 
                 // Send Interested or Not Interested based on bitfield
