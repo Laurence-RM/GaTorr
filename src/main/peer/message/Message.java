@@ -19,6 +19,10 @@
 
 package main.peer.message;
 
+import java.io.ByteArrayOutputStream;
+
+import main.Utils;
+
 public class Message {
 
     // Define static types
@@ -32,13 +36,18 @@ public class Message {
     public static final byte PIECE = 7;
 
     // Message structure
-    private byte length;
+    private int length;
     private byte type;
     private byte[] payload;
 
     // Constructor
-    public Message(byte length_, byte type_, byte[] payload_) {
-        this.length = length_;
+    public Message(byte type_, byte[] payload_) {
+        // Check length of payload + add type byte, length of "this.length" not included
+        if (payload_ == null) {
+            this.length = 1;
+        } else {
+            this.length = (byte) (1 + payload_.length);
+        }
         this.type = type_;
         this.payload = payload_;
     }
@@ -47,12 +56,24 @@ public class Message {
         return this.type;
     }
 
-    public byte getLength() {
+    public int getLength() {
         return this.length;
     }
 
     public byte[] getPayload() {
         return this.payload;
+    }
+
+    public byte[] getMessage() {
+        if (this.length == 0) {
+            return new byte[]{};
+        }
+        ByteArrayOutputStream b_out = new ByteArrayOutputStream(this.length+4);
+        b_out.writeBytes(Utils.intToByteArray(this.length));
+        b_out.write(this.type);
+        b_out.write(this.payload, 0, this.payload.length);
+
+        return b_out.toByteArray();
     }
     
 }
