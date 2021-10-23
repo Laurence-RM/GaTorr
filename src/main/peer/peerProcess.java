@@ -29,7 +29,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.*;
 
-public class Peer {
+public class peerProcess {
 
     private int peerID;
     private String hostName;
@@ -125,7 +125,7 @@ public class Peer {
         }
     }
 
-    public Peer(int id) {
+    public peerProcess(int id) {
         this.setPeerID(id);
 
         // Read common cfg
@@ -360,7 +360,7 @@ public class Peer {
         // Send HS to prior peers (or skip if none)
         // Wait for responses
         try{
-            Peer peer = new Peer(Integer.parseInt(args[0]));
+            peerProcess peer = new peerProcess(Integer.parseInt(args[0]));
             ServerSocket listener = new ServerSocket(peer.port);
 
             for (PeerInfo p : peer.priorPeers) {
@@ -384,8 +384,8 @@ public class Peer {
             }
             
         } catch (Exception e) {
-            e.printStackTrace();
-            //System.out.println("Improper args. Missing numerical Peer ID");
+            //e.printStackTrace();
+            System.out.println("Improper args. Missing numerical Peer ID");
         }
     }
 }
