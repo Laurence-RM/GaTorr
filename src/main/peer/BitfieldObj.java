@@ -1,8 +1,9 @@
 package main.peer;
 
 import java.util.Arrays;
+import java.util.Iterator;
 
-public class BitfieldObj {
+public class BitfieldObj implements Iterable<Boolean> {
 
     private byte[] data = null;
     private int leftoverBits = 0;
@@ -93,4 +94,48 @@ public class BitfieldObj {
         }
         System.out.println();
     }
+
+    // Check if bitfield contains missing pieces
+    public boolean hasPiece(BitfieldObj bitfield) {
+        // Compare bitfield lengths
+        if (bitfield.getData().length - bitfield.leftoverBits != data.length - leftoverBits) {
+            System.out.println("Incompatible bitfield lengths");
+            return false;
+        }
+
+        Iterator<Boolean> it1 = bitfield.iterator();
+        Iterator<Boolean> it2 = this.iterator();
+        // Iterate through both bitfields and check if this bf has a missing piece
+        int ind = 0;
+        while (it1.hasNext() && ind < data.length*8 - leftoverBits) {
+            ind++;
+            if (!it1.next() && it2.next()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Iterate through bitfield
+    public Iterator<Boolean> iterator() {
+        return new Iterator<Boolean>() {
+            private int index = 0;
+            private int bitIndex = 0;
+
+            public boolean hasNext() {
+                return index < data.length*8-leftoverBits;
+            }
+
+            public Boolean next() {
+                boolean result = checkBit(index);
+                index++;
+                bitIndex++;
+                if (bitIndex == 8) {
+                    bitIndex = 0;
+                }
+                return result;
+            }
+        };
+    }
+
 }
