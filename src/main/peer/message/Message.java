@@ -71,7 +71,9 @@ public class Message {
         ByteArrayOutputStream b_out = new ByteArrayOutputStream(this.length+4);
         b_out.writeBytes(Utils.intToByteArray(this.length));
         b_out.write(this.type);
-        b_out.write(this.payload, 0, this.payload.length);
+        if (this.payload != null) {
+            b_out.write(this.payload, 0, this.payload.length);
+        }
 
         return b_out.toByteArray();
     }
