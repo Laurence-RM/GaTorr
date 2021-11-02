@@ -16,12 +16,8 @@ package main.peer;
 import java.util.ArrayList;
 import java.util.Scanner;
 
-import main.peer.message.Bitfield;
-import main.peer.message.Handshake;
-import main.peer.message.Message;
+import main.peer.message.*;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
@@ -242,6 +238,7 @@ public class peerProcess {
         }
     }
 
+
     // Handler for incoming peer connections
     private class Handler extends Thread {
         PeerInfo p;
@@ -308,6 +305,13 @@ public class peerProcess {
                 }
                 
                 // Send Interested or Not Interested based on bitfield
+                if (p.bf.hasPiece(bitfield)) {
+                    p.sendMessage(new Interested());
+                    System.out.println("Sending interested msg to " + p.ID);
+                } else {
+                    p.sendMessage(new NotInterested());
+                    System.out.println("Sending not interested msg to " + p.ID);
+                }
 
                 // Wait for other messages
                 while(true) {
@@ -320,31 +324,40 @@ public class peerProcess {
                     switch (type) {
                         case Message.CHOKE:
                             // Handle choke msg here
+                            System.out.println("Choke received from peer " + p.ID);
                             break;
                         case Message.UNCHOKE:
                             // Handle unchoke
+                            System.out.println("Unchoke received from peer " + p.ID);
                             break;
                         case Message.INTERESTED:
                             // Handle interested
+                            System.out.println("Received interested msg from " + p.ID);
                             break; 
                         case Message.NOTINTERESTED:
                             // Handle notinterested
+                            System.out.println("Received not interested msg from " + p.ID);
                             break;
                         case Message.HAVE:
                             // Handle have
+                            System.out.println("Received have msg from " + p.ID);
                             break;
                         case Message.BITFIELD:
                             // Handle bitfield
+                            System.out.println("Received bitfield msg from " + p.ID);
                             // Note: should not be receiving more bitfields after first
                             break;
                         case Message.REQUEST:
                             // Handle unchoke
+                            System.out.println("Received request msg from " + p.ID);
                             break;
                         case Message.PIECE:
                             // Handle piece
+                            System.out.println("Received piece msg from " + p.ID);
                             break;
                         default:
                             // Could not identify message type
+                            System.out.println("Received unknown msg from " + p.ID);
                             break;
                     }
                 }
@@ -384,8 +397,8 @@ public class peerProcess {
             }
             
         } catch (Exception e) {
-            //e.printStackTrace();
-            System.out.println("Improper args. Missing numerical Peer ID");
+            e.printStackTrace();
+            //System.out.println("Improper args. Missing numerical Peer ID");
         }
     }
 }
