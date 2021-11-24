@@ -52,18 +52,29 @@ public class Message {
         this.payload = payload_;
     }
 
+    public Message(Message m) {
+        this.length = m.length;
+        this.type = m.type;
+        this.payload = m.payload;
+    }
+
     public byte getType() {
         return this.type;
     }
 
+    
     public int getLength() {
         return this.length;
     }
-
+    
     public byte[] getPayload() {
         return this.payload;
     }
-
+    
+    protected void setPayload(byte[] b) {
+        this.payload = b;
+    }
+    
     public byte[] getMessage() {
         if (this.length == 0) {
             return new byte[]{};

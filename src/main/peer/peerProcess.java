@@ -14,6 +14,7 @@
 package main.peer;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Scanner;
 
 import main.peer.message.*;
@@ -22,8 +23,11 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.*;
+import java.text.SimpleDateFormat;
 
 public class peerProcess {
 
@@ -43,6 +47,27 @@ public class peerProcess {
 
     private BitfieldObj bitfield;
     private ArrayList<PeerInfo> priorPeers;
+
+    private File logFile;
+    private FileOutputStream logStream;
+    private SimpleDateFormat dateFormat;
+
+    public void writeToLog(String msg) {
+        // Will append Date + PeerID + Message to log file
+        try {
+            if (logStream == null) {
+                logFile = new File("log_peer_" + peerID + ".log");
+                logStream = new FileOutputStream(logFile, true);
+                dateFormat = new SimpleDateFormat("[yy-MM-dd HH:mm:ss]: ");
+            }
+            Date date = new Date();
+            // Append msg to log
+            String logMsg = dateFormat.format(date) + "Peer " + peerID + " " + msg + "\n";
+            logStream.write(logMsg.getBytes());
+        } catch (IOException e) {
+            System.out.println("Error creating/writing log.");
+        }
+    }
 
     public class PeerInfo {
         public int ID;  // TODO: Should ID be string to store leading zeros?
@@ -88,6 +113,7 @@ public class peerProcess {
                 this.in = new DataInputStream(this.connection.getInputStream());
             } catch (IOException e) {
                 System.out.println("Error establishing connection with peer " + ID);
+                this.connection = null;
             }
         }
 
@@ -207,9 +233,13 @@ public class peerProcess {
                     this.port = p.port;
                     // Prepare Bitfield
                     if (p.complete) {
-                        this.bitfield = new BitfieldObj(pieceCount, true);
-                        
-                        //TODO: Check that file is actually complete
+                        this.bitfield = new BitfieldObj(pieceCount, true);    
+                        pf = new File(pf, fileName);
+                        if (pf.length() != this.fileSize) {
+                            System.out.println("Filesize of [" + pf.getAbsolutePath() + "]: " + pf.length());
+                            throw new RuntimeException("File for peer" + p.ID + " is not complete.");
+                        }
+                        System.out.println("File confirmed for peer " + p.ID);             
                     }
                     else {
                         this.bitfield = new BitfieldObj(pieceCount);
@@ -268,10 +298,9 @@ public class peerProcess {
                 // Validate handshake
                 int id_in = Handshake.validateMessage(handshakeMsg);
                 if (id_in != -1) {
-                    //Send back handshake
-                    System.out.println("Handshake received from peer "+id_in);
                     if (!shook) {
-                        System.out.println("Returning handshake from peer " + id_in);
+                        writeToLog(String.format("is connected from Peer %d", p.ID));
+                        //Send back handshake
                         p.sendMessage(new Handshake(peerID));
                         p.ID = id_in;
                     } else {
@@ -317,43 +346,52 @@ public class peerProcess {
                 while(true) {
                     len = p.in.readInt();
                     type = p.in.readByte();
+                    Message msg;
+                    byte[] data;
                     if (type >= 0 && type <= 7 && len > 0) {
-                        byte[] data = new byte[len-1];
+                        data = new byte[len-1];
                         p.in.readFully(data);
                     }
+                    else {
+                        data = null;
+                    }
+                    msg = new Message(type, data);
                     switch (type) {
                         case Message.CHOKE:
                             // Handle choke msg here
-                            System.out.println("Choke received from peer " + p.ID);
+                            writeToLog("is choked by " + p.ID);
                             break;
                         case Message.UNCHOKE:
                             // Handle unchoke
-                            System.out.println("Unchoke received from peer " + p.ID);
+                            writeToLog("is unchoked by " + p.ID);
                             break;
                         case Message.INTERESTED:
                             // Handle interested
-                            System.out.println("Received interested msg from " + p.ID);
+                            writeToLog("received the 'interested' message from " + p.ID);
                             break; 
                         case Message.NOTINTERESTED:
                             // Handle notinterested
-                            System.out.println("Received not interested msg from " + p.ID);
+                            writeToLog("received the 'not interested' message from " + p.ID);
                             break;
                         case Message.HAVE:
                             // Handle have
-                            System.out.println("Received have msg from " + p.ID);
+                            Have have_msg = new Have(msg);
+                            writeToLog(String.format("received the 'have' message from %d for the piece %d", p.ID, have_msg.getIndex()));
                             break;
                         case Message.BITFIELD:
                             // Handle bitfield
                             System.out.println("Received bitfield msg from " + p.ID);
                             // Note: should not be receiving more bitfields after first
-                            break;
+                            break;  
                         case Message.REQUEST:
                             // Handle unchoke
                             System.out.println("Received request msg from " + p.ID);
                             break;
                         case Message.PIECE:
                             // Handle piece
-                            System.out.println("Received piece msg from " + p.ID);
+                            Piece piece_msg = new Piece(msg);
+                            // TODO: write content to file
+                            writeToLog(String.format("has downloaded the piece %d from %d", piece_msg.getIndex(), p.ID));                            
                             break;
                         default:
                             // Could not identify message type
@@ -380,10 +418,17 @@ public class peerProcess {
                 System.out.println("Attempting handshake with peer " + p.ID);
                 // Connect to peer
                 p.establishConnection();
-                // Send handshake
-                Handshake hs = new Handshake(peer.peerID);
-                p.sendMessage(hs);
-                peer.new Handler(p).start();
+                if (p.connection != null) {
+                    // Send handshake
+                    peer.writeToLog(String.format("makes a connection to Peer %d", p.ID));
+                    Handshake hs = new Handshake(peer.peerID);
+                    p.sendMessage(hs);
+                    peer.new Handler(p).start();
+                } else {
+                    // Could not connect to peer
+                    Thread.sleep(1000);
+                    System.out.println("Reattempting to connect to peer " + p.ID);
+                }
             }
 
             try {

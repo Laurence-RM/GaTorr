@@ -11,6 +11,11 @@ public class Have extends Message {
         this.index = index_;
     }
 
+    public Have(Message msg) {
+        super(msg);
+        this.index = Utils.byteArrayToInt(msg.getPayload());
+    }
+
     public int getIndex() {
         return this.index;
     }
