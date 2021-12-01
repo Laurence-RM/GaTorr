@@ -384,8 +384,9 @@ public class peerProcess {
                             // Note: should not be receiving more bitfields after first
                             break;  
                         case Message.REQUEST:
-                            // Handle unchoke
-                            System.out.println("Received request msg from " + p.ID);
+                            // Handle request
+                            Request req_msg = new Request(msg);
+                            writeToLog(String.format("has requested the piece %d from %d", req_msg.getIndex(), p.ID));                          
                             break;
                         case Message.PIECE:
                             // Handle piece
