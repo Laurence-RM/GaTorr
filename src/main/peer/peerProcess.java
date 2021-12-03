@@ -57,6 +57,7 @@ public class peerProcess {
         try {
             if (logStream == null) {
                 logFile = new File("log_peer_" + peerID + ".log");
+                logFile.delete(); //Delete old log file
                 logStream = new FileOutputStream(logFile, true);
                 dateFormat = new SimpleDateFormat("[yy-MM-dd HH:mm:ss]: ");
             }
@@ -193,7 +194,7 @@ public class peerProcess {
             }
 
             pieceCount = (int) Math.ceil(this.fileSize / this.pieceSize); // Number of pieces
-            lastPieceSize = this.fileSize - ((this.pieceCount - 1) * this.pieceSize); // Find remainder size of last piece
+            lastPieceSize = this.fileSize % this.pieceSize; // Find remainder size of last piece
         }
         
         // Read peer cfg
@@ -236,8 +237,8 @@ public class peerProcess {
                         this.bitfield = new BitfieldObj(pieceCount, true);    
                         pf = new File(pf, fileName);
                         if (pf.length() != this.fileSize) {
-                            System.out.println("Filesize of [" + pf.getAbsolutePath() + "]: " + pf.length());
-                            throw new RuntimeException("File for peer" + p.ID + " is not complete.");
+                            System.out.println("File for peer" + p.ID + " does not exist or is not complete.\nCould not start process.");
+                            System.exit(1);
                         }
                         System.out.println("File confirmed for peer " + p.ID);             
                     }
@@ -255,10 +256,11 @@ public class peerProcess {
             if (!selfFound) {
                 System.out.printf("Peer %d not found in PeerInfo.cfg, could not start process.\n", peerID);
                 reader.close();
-                System.exit(0);
+                System.exit(1);
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+        } catch (FileNotFoundException e) {
+            System.out.println("PeerInfo.cfg not found, could not start process.");
+            System.exit(1);
         } finally {
             try {
                 reader.close();
@@ -299,7 +301,7 @@ public class peerProcess {
                 int id_in = Handshake.validateMessage(handshakeMsg);
                 if (id_in != -1) {
                     if (!shook) {
-                        writeToLog(String.format("is connected from Peer %d", p.ID));
+                        writeToLog(String.format("is connected from Peer %d", id_in));
                         //Send back handshake
                         p.sendMessage(new Handshake(peerID));
                         p.ID = id_in;
@@ -416,22 +418,31 @@ public class peerProcess {
             ServerSocket listener = new ServerSocket(peer.port);
 
             for (PeerInfo p : peer.priorPeers) {
+                int connectionAttempts = 0;
                 System.out.println("Attempting handshake with peer " + p.ID);
-                // Connect to peer
-                p.establishConnection();
-                if (p.connection != null) {
-                    // Send handshake
-                    peer.writeToLog(String.format("makes a connection to Peer %d", p.ID));
-                    Handshake hs = new Handshake(peer.peerID);
-                    p.sendMessage(hs);
-                    peer.new Handler(p).start();
-                } else {
-                    // Could not connect to peer
-                    Thread.sleep(1000);
-                    System.out.println("Reattempting to connect to peer " + p.ID);
+                while (true) {
+                    // Connect to peer
+                    p.establishConnection();
+                    if (p.connection != null) {
+                        // Send handshake
+                        peer.writeToLog(String.format("makes a connection to Peer %d", p.ID));
+                        Handshake hs = new Handshake(peer.peerID);
+                        p.sendMessage(hs);
+                        peer.new Handler(p).start();
+                        break;
+                    } else if (connectionAttempts >= 10) {
+                        System.out.println("Could not connect to peer " + p.ID);
+                        peer.writeToLog(String.format("could not connect to Peer %d after %d attempts", p.ID, connectionAttempts));
+                        break;
+                    } else {
+                        // Could not connect to peer
+                        connectionAttempts++;
+                        System.out.println("("+connectionAttempts+"/10) Retrying handshake with peer " + p.ID + " in 5 seconds...");
+                        Thread.sleep(5000);
+                        continue;
+                    }
                 }
             }
-
             try {
                 System.out.println("Listening for peers on port " + peer.port);
                 while(true) {
