@@ -46,7 +46,7 @@ public class Message {
         if (payload_ == null) {
             this.length = 1;
         } else {
-            this.length = (byte) (1 + payload_.length);
+            this.length = 1 + payload_.length;
         }
         this.type = type_;
         this.payload = payload_;
@@ -73,6 +73,7 @@ public class Message {
     
     protected void setPayload(byte[] b) {
         this.payload = b;
+        this.length = 1 + b.length;
     }
     
     public byte[] getMessage() {

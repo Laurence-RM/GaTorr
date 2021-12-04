@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Scanner;
 
+import main.peer.TorrentFile.PieceObj;
 import main.peer.message.*;
 
 import java.io.DataInputStream;
@@ -24,7 +25,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.*;
 import java.text.SimpleDateFormat;
@@ -51,6 +51,8 @@ public class peerProcess {
     private File logFile;
     private FileOutputStream logStream;
     private SimpleDateFormat dateFormat;
+
+    private TorrentFile torrentFile;
 
     public void writeToLog(String msg) {
         // Will append Date + PeerID + Message to log file
@@ -232,15 +234,17 @@ public class peerProcess {
                     // Save properties
                     this.hostName = p.hostname;
                     this.port = p.port;
+                    // Prepare torrent file
+                    pf = new File(pf, fileName);
+                    this.torrentFile= new TorrentFile(fileName, fileSize, lastPieceSize, pf);
                     // Prepare Bitfield
                     if (p.complete) {
                         this.bitfield = new BitfieldObj(pieceCount, true);    
-                        pf = new File(pf, fileName);
-                        if (pf.length() != this.fileSize) {
+                        if (!torrentFile.isComplete()) {
                             System.out.println("File for peer" + p.ID + " does not exist or is not complete.\nCould not start process.");
                             System.exit(1);
                         }
-                        System.out.println("File confirmed for peer " + p.ID);             
+                        System.out.println("File confirmed for peer " + p.ID);            
                     }
                     else {
                         this.bitfield = new BitfieldObj(pieceCount);
@@ -370,6 +374,8 @@ public class peerProcess {
                         case Message.INTERESTED:
                             // Handle interested
                             writeToLog("received the 'interested' message from " + p.ID);
+                            Piece p_ = torrentFile.getPieceFromFile(1).getPieceMsg();
+                            p.sendMessage(p_);
                             break; 
                         case Message.NOTINTERESTED:
                             // Handle notinterested
@@ -394,6 +400,8 @@ public class peerProcess {
                             // Handle piece
                             Piece piece_msg = new Piece(msg);
                             // TODO: write content to file
+                            PieceObj piece = torrentFile.new PieceObj(piece_msg);
+                            torrentFile.writePieceToFile(piece);
                             writeToLog(String.format("has downloaded the piece %d from %d", piece_msg.getIndex(), p.ID));                            
                             break;
                         default:
