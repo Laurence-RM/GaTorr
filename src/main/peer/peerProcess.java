@@ -236,10 +236,11 @@ public class peerProcess {
                     this.port = p.port;
                     // Prepare torrent file
                     pf = new File(pf, fileName);
-                    this.torrentFile= new TorrentFile(fileName, fileSize, lastPieceSize, pf);
+                    this.torrentFile = new TorrentFile(fileName, fileSize, lastPieceSize, pf);
                     // Prepare Bitfield
                     if (p.complete) {
                         this.bitfield = new BitfieldObj(pieceCount, true);    
+                        torrentFile.setBitfield(bitfield);
                         if (!torrentFile.isComplete()) {
                             System.out.println("File for peer" + p.ID + " does not exist or is not complete.\nCould not start process.");
                             System.exit(1);
@@ -248,6 +249,7 @@ public class peerProcess {
                     }
                     else {
                         this.bitfield = new BitfieldObj(pieceCount);
+                        torrentFile.setBitfield(bitfield);
                     }
                     selfFound = true;
                     break;

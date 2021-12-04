@@ -12,8 +12,8 @@ public class BitfieldObj implements Iterable<Boolean> {
         // Size corresponds to the number of bits/pieces
         if (size <= 0) { throw new IllegalArgumentException("Bitfield needs to be larger than 0."); }
 
-        setData(new byte[(int) Math.ceil(size/8)]); // create an array of bytes that can support the number of bits 
-        leftoverBits = size - ((data.length)*8);   
+        setData(new byte[(int) Math.ceil(((float) size)/8)]); // create an array of bytes that can support the number of bits 
+        leftoverBits = size % 8;;   
         
         if (full) {
             Arrays.fill(data, (byte) 0xff);
@@ -45,11 +45,11 @@ public class BitfieldObj implements Iterable<Boolean> {
     public boolean checkBit(int index) {
         // index of 0 = 1st bit in bitfield
 
-        if (Math.ceil(index / 8) <= data.length && index >= 0) {
+        if (Math.ceil(((float) index) / 8) <= data.length && index >= 0) {
             // index is within bitfield bounds
-            int i = (int) index/8; // index of corresponding byte in data
+            int i = index/8; // index of corresponding byte in data
             int j = 8*(i+1)-index-1; // reverse position of wanted bit: second bit in byte is 2^6, j=6
-            int result = data[i] & (int) Math.pow(2, j); // Bitwise AND to check bit is 0 or 1
+            int result = data[i] & (1 << j); // Bitwise AND to check bit is 0 or 1
             result >>= j; // bit shift right to rightmost bit 
 
             if (result == 1) { 
@@ -60,11 +60,11 @@ public class BitfieldObj implements Iterable<Boolean> {
     }
 
     public boolean setBit(int index) {
-        if (Math.ceil(index / 8) <= data.length && index >= 0) {
+        if (Math.ceil(((float) index) / 8) <= data.length && index >= 0) {
             // index is within bitfield bounds
             int i = (int) index/8; // index of corresponding byte in data
             int j = 8*(i+1)-index-1; // reverse position of wanted bit: second bit in byte is 2^6, j=6
-            data[i] |= (int) Math.pow(2,j); // Bitwise OR and assign bit value
+            data[i] |= 1 << j; // Bitwise OR and assign bit value
             return true;
         }
         return false;
@@ -73,13 +73,13 @@ public class BitfieldObj implements Iterable<Boolean> {
     public boolean isComplete() {
         // Check full bytes
         for (int i = 0; i < data.length-1; i++) {
-            if (data[i] != 0xff) {
+            if (data[i] != -1) {
                 return false;
             }
         }
 
         // Check last incomplete byte
-        for (int j = 0; j < leftoverBits-1; j++) {
+        for (int j = 0; j < leftoverBits; j++) {
             if (!checkBit((data.length-1)*8 + j)) {
                 return false;
             }

@@ -51,8 +51,10 @@ public class TorrentFile {
     private boolean fileComplete;
 
     private File file;
+    private int parCount;
+    private BitfieldObj bitfield;
 
-    public TorrentFile(String fileName, int fileSize, int pieceSize, File file_) {
+    public TorrentFile(String fileName, int fileSize, int pieceSize, File file_, BitfieldObj bitfield_) {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.pieceSize = pieceSize;
@@ -60,10 +62,17 @@ public class TorrentFile {
         this.lastPieceSize = fileSize % pieceSize;
         this.file = file_;
         this.fileComplete = file_.length() == fileSize;
+        this.bitfield = bitfield_;
+        this.parCount = 0;
         if (!fileComplete) {
             file.delete();
         }
     }
+
+    public TorrentFile(String fileName, int fileSize, int pieceSize, File file_) {
+        this(fileName, fileSize, pieceSize, file_, null);
+    }
+
 
     public boolean isComplete() {
         return fileComplete;
@@ -103,26 +112,74 @@ public class TorrentFile {
         if (fileComplete) {
             return;
         }
-
+        
         // Write bytes to par file
         try {
             FileOutputStream fos = new FileOutputStream(file.getPath()+"_"+pieceObj.index+".par", true);
             fos.write(pieceObj.getData());
             fos.close();
+            this.parCount++;
+            updateBitfield(pieceObj.getIndex());
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+    
+    public void setBitfield(BitfieldObj bitfield_) {
+        this.bitfield = bitfield_;
+    }
 
+    private void updateBitfield(int index) {
+        if (bitfield == null) {
+            throw new RuntimeException("Bitfield reference in torrent file is null");
+        }
+        this.bitfield.setBit(index);
+        if (parCount == pieceCount && bitfield.isComplete()) {
+            combineParFiles();
+        }
+    }
+    
+    public void combineParFiles() {
+        if (fileComplete || parCount != pieceCount) {
+            return;
+        }
+        
+        try {
+            FileOutputStream fos = new FileOutputStream(file);
+            for (int i = 0; i < pieceCount; i++) {
+                File f = new File(file.getPath()+"_"+i+".par");
+                FileInputStream fis = new FileInputStream(f);
+                int size = pieceSize;
+                if (i == pieceCount - 1) {
+                    size = lastPieceSize;
+                }
+                byte[] data = new byte[size];
+                fis.read(data);
+                fos.write(data);
+                fis.close();
+                f.delete();
+            }
+            fos.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        this.fileComplete = true;
+    }
     
         public static void main(String args[]) {
             File file = new File("peer_1001/thefile");
             TorrentFile torrentFile = new TorrentFile("thefile", 2167705, 16384, file);
-            Piece p = torrentFile.getPieceFromFile(4).getPieceMsg();
+            torrentFile.setBitfield(new BitfieldObj(torrentFile.pieceCount));
+            
+            System.out.println("Piece count: " + torrentFile.pieceCount);
 
             File file2 = new File("peer_1002/thefile");
             TorrentFile tf2 = new TorrentFile("thefile", 2167705, 16384, file2);
-            PieceObj pObj = tf2.new PieceObj(p);
-            tf2.writePieceToFile(pObj);
+            tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount));
+
+            for (int i = 0; i < torrentFile.pieceCount; i++) {
+                PieceObj pieceObj = torrentFile.getPieceFromFile(i);
+                tf2.writePieceToFile(pieceObj);
+            }
         }
 }
