@@ -2,6 +2,7 @@ package main.peer;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 
@@ -34,6 +35,7 @@ public class TorrentFile {
             return new Piece(index, data);
         }
 
+        // Testing
         public void printContent() {
             System.out.println("Piece " + index + ", " + data.length + " bytes:");
             for (int i = 0; i < 20; i++) {
@@ -58,7 +60,7 @@ public class TorrentFile {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.pieceSize = pieceSize;
-        this.pieceCount = (int) Math.ceil((double) fileSize / pieceSize);
+        this.pieceCount = (int) Math.ceil((float) fileSize / pieceSize);
         this.lastPieceSize = fileSize % pieceSize;
         this.file = file_;
         this.fileComplete = file_.length() == fileSize;
@@ -82,7 +84,7 @@ public class TorrentFile {
         return file;
     }
 
-    public PieceObj getPieceFromFile(int index) {
+    protected PieceObj getPieceFromFile(int index) {
         // Check file is complete
         if (!fileComplete) {
             return null;
@@ -105,6 +107,36 @@ public class TorrentFile {
             e.printStackTrace();
         }
         return new PieceObj(index, data);
+    }
+
+    protected PieceObj getPieceFromPar(int index) {
+        if (bitfield.checkBit(index)) {
+            try {
+                FileInputStream fis = new FileInputStream(file.getPath()+"_"+index+".par");
+                int size = pieceSize;
+                if (index == pieceCount - 1) {
+                    size = lastPieceSize;
+                }
+                byte[] data = new byte[size];
+                fis.read(data);
+                fis.close();
+                return new PieceObj(index, data);
+            }
+            catch (FileNotFoundException e) {
+                System.out.println("Par file for Piece " + index + " not found");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return null;
+    }
+
+    public PieceObj getPiece(int index) {
+        if (fileComplete) {
+            return getPieceFromFile(index);
+        } else {
+            return getPieceFromPar(index);
+        }
     }
     
     public void writePieceToFile(PieceObj pieceObj) {
@@ -140,7 +172,7 @@ public class TorrentFile {
     }
     
     public void combineParFiles() {
-        if (fileComplete || parCount != pieceCount) {
+        if (fileComplete) {
             return;
         }
         
@@ -171,15 +203,13 @@ public class TorrentFile {
             TorrentFile torrentFile = new TorrentFile("thefile", 2167705, 16384, file);
             torrentFile.setBitfield(new BitfieldObj(torrentFile.pieceCount));
             
-            System.out.println("Piece count: " + torrentFile.pieceCount);
-
             File file2 = new File("peer_1002/thefile");
             TorrentFile tf2 = new TorrentFile("thefile", 2167705, 16384, file2);
             tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount));
 
-            for (int i = 0; i < torrentFile.pieceCount; i++) {
-                PieceObj pieceObj = torrentFile.getPieceFromFile(i);
-                tf2.writePieceToFile(pieceObj);
-            }
+            PieceObj pieceObj = torrentFile.getPiece(2);
+            tf2.writePieceToFile(pieceObj);
+            PieceObj po = tf2.getPiece(2);
+            po.printContent();
         }
 }

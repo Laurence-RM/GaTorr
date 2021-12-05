@@ -14,7 +14,11 @@
 package main.peer;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
 import java.util.Scanner;
 
 import main.peer.TorrentFile.PieceObj;
@@ -23,6 +27,7 @@ import main.peer.message.*;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -53,6 +58,7 @@ public class peerProcess {
     private SimpleDateFormat dateFormat;
 
     private TorrentFile torrentFile;
+    List<Integer> requestedPieces = Collections.synchronizedList(new ArrayList<Integer>());
 
     public void writeToLog(String msg) {
         // Will append Date + PeerID + Message to log file
@@ -82,6 +88,12 @@ public class peerProcess {
         public DataInputStream in;
         public DataOutputStream out;
         public Socket connection;
+
+        public boolean choking = true;
+        public boolean chokedby = true;
+
+        ArrayList<Integer> wantedPieces = new ArrayList<Integer>();
+
 
         public PeerInfo(String[] info) {
             this.ID = Integer.parseInt(info[0]);
@@ -236,7 +248,7 @@ public class peerProcess {
                     this.port = p.port;
                     // Prepare torrent file
                     pf = new File(pf, fileName);
-                    this.torrentFile = new TorrentFile(fileName, fileSize, lastPieceSize, pf);
+                    this.torrentFile = new TorrentFile(fileName, fileSize, pieceSize, pf);
                     // Prepare Bitfield
                     if (p.complete) {
                         this.bitfield = new BitfieldObj(pieceCount, true);    
@@ -297,6 +309,21 @@ public class peerProcess {
             this.shook = true;
         }
 
+        protected void requestRandomWantedPiece() {
+            if (p.wantedPieces.size() == 0) {
+                return;
+            }
+
+            Random rand = new Random();
+            int piece_index = p.wantedPieces.get(rand.nextInt(p.wantedPieces.size()));
+            p.sendMessage(new Request(piece_index));
+            synchronized(requestedPieces) {
+                if (!requestedPieces.contains(piece_index)) {
+                    requestedPieces.add(piece_index);
+                }
+            }
+        }
+
         public void run() {
             try {
                 // Receive handshake message
@@ -350,6 +377,7 @@ public class peerProcess {
                     System.out.println("Sending not interested msg to " + p.ID);
                 }
 
+
                 // Wait for other messages
                 while(true) {
                     len = p.in.readInt();
@@ -368,16 +396,38 @@ public class peerProcess {
                         case Message.CHOKE:
                             // Handle choke msg here
                             writeToLog("is choked by " + p.ID);
+                            p.chokedby = true;
+
+                            // Assume requests are forgetten after choke?
+                            synchronized(requestedPieces) {
+                                requestedPieces.clear();
+                            }
                             break;
                         case Message.UNCHOKE:
                             // Handle unchoke
                             writeToLog("is unchoked by " + p.ID);
+                            p.chokedby = false;
+                            p.wantedPieces.clear();
+
+                            synchronized(requestedPieces) {
+                                int i = 0;
+                                for (Boolean b : p.bf) {
+                                    if (b && !bitfield.checkBit(i) && !requestedPieces.contains((Integer) i)) {
+                                        p.wantedPieces.add(i);
+                                    }
+                                    i++;
+                                }
+                            }
+
+                            // request random element from wantedPieces
+                            requestRandomWantedPiece();
                             break;
                         case Message.INTERESTED:
                             // Handle interested
                             writeToLog("received the 'interested' message from " + p.ID);
-                            Piece p_ = torrentFile.getPieceFromFile(1).getPieceMsg();
-                            p.sendMessage(p_);
+
+                            // Send pieces if neighbor
+                            p.sendMessage(new Unchoke());
                             break; 
                         case Message.NOTINTERESTED:
                             // Handle notinterested
@@ -387,6 +437,19 @@ public class peerProcess {
                             // Handle have
                             Have have_msg = new Have(msg);
                             writeToLog(String.format("received the 'have' message from %d for the piece %d", p.ID, have_msg.getIndex()));
+                            
+                            // Update peer bitfield
+                            p.bf.setBit(have_msg.getIndex());
+
+                            // Check if interested
+                            if (!bitfield.checkBit(have_msg.getIndex())) {
+                                p.sendMessage(new Interested());
+                                System.out.println("Sending interested msg to " + p.ID + " for piece " + have_msg.getIndex());
+                            } else {
+                                p.sendMessage(new NotInterested());
+                                System.out.println("Sending not interested msg to " + p.ID + " for piece " + have_msg.getIndex());
+                            }
+                            
                             break;
                         case Message.BITFIELD:
                             // Handle bitfield
@@ -396,15 +459,33 @@ public class peerProcess {
                         case Message.REQUEST:
                             // Handle request
                             Request req_msg = new Request(msg);
-                            writeToLog(String.format("has requested the piece %d from %d", req_msg.getIndex(), p.ID));                          
+                            //writeToLog(String.format("has recieved a request for piece %d from %d", req_msg.getIndex(), p.ID));                          
+                            p.sendMessage(torrentFile.getPiece(req_msg.getIndex()).getPieceMsg());
+
                             break;
                         case Message.PIECE:
                             // Handle piece
                             Piece piece_msg = new Piece(msg);
-                            // TODO: write content to file
+
+                            // Write to file
                             PieceObj piece = torrentFile.new PieceObj(piece_msg);
                             torrentFile.writePieceToFile(piece);
-                            writeToLog(String.format("has downloaded the piece %d from %d", piece_msg.getIndex(), p.ID));                            
+                            writeToLog(String.format("has downloaded the piece %d from %d. Now the number of pieces it has is %d.", piece_msg.getIndex(), p.ID, bitfield.numberOfFinishedPieces()));                            
+                
+                            synchronized(requestedPieces) {
+                                requestedPieces.remove((Integer) piece_msg.getIndex());
+                            }
+                            p.wantedPieces.remove((Integer) piece_msg.getIndex());
+
+                            // Request more pieces
+                            if (!p.chokedby) {
+                                requestRandomWantedPiece();
+                            }
+
+                            if (torrentFile.isComplete()) {
+                                writeToLog("has downloaded the complete file.");
+                                System.exit(0);
+                            }
                             break;
                         default:
                             // Could not identify message type
@@ -457,7 +538,6 @@ public class peerProcess {
                 System.out.println("Listening for peers on port " + peer.port);
                 while(true) {
                     peer.new Handler(listener.accept()).start(); // Blocks until connection attempted
-                    // System.out.println("New connection...");
                 }
             } finally {
                 listener.close();

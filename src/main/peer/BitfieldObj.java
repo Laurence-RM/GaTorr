@@ -31,7 +31,7 @@ public class BitfieldObj implements Iterable<Boolean> {
 
     public BitfieldObj(byte[] data_, int size) {
         this.data = data_;
-        this.leftoverBits = size - ((data.length) * 8);
+        this.leftoverBits = size % 8;
     }
 
     public byte[] getData() {
@@ -40,6 +40,10 @@ public class BitfieldObj implements Iterable<Boolean> {
 
     public void setData(byte[] data) {
         this.data = data;
+    }
+
+    public int getLength() {
+        return data.length*8 - leftoverBits;
     }
 
     public boolean checkBit(int index) {
@@ -98,8 +102,8 @@ public class BitfieldObj implements Iterable<Boolean> {
     // Check if bitfield contains missing pieces
     public boolean hasPiece(BitfieldObj bitfield) {
         // Compare bitfield lengths
-        if (bitfield.getData().length - bitfield.leftoverBits != data.length - leftoverBits) {
-            System.out.println("Incompatible bitfield lengths");
+        if (bitfield.getLength() != this.getLength()) {
+            System.out.println("Incompatible bitfield lengths " + bitfield.getLength() + " != " + this.getLength());
             return false;
         }
 
@@ -114,6 +118,20 @@ public class BitfieldObj implements Iterable<Boolean> {
             }
         }
         return false;
+    }
+
+    public int numberOfFinishedPieces() {
+        int count = 0;
+        for (boolean b : this) {
+            if (b) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public int numberOfMissingPieces() {
+        return getLength() - numberOfFinishedPieces();
     }
 
     // Iterate through bitfield
