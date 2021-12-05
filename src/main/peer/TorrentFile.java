@@ -92,7 +92,7 @@ public class TorrentFile {
 
         int begin = index * pieceSize;
         int length = pieceSize;
-        if (index == pieceCount - 1) {
+        if (index == pieceCount - 1 && lastPieceSize != 0) {
             length = lastPieceSize;
         }
         byte[] data = new byte[length];
@@ -114,7 +114,7 @@ public class TorrentFile {
             try {
                 FileInputStream fis = new FileInputStream(file.getPath()+"_"+index+".par");
                 int size = pieceSize;
-                if (index == pieceCount - 1) {
+                if (index == pieceCount - 1 && lastPieceSize != 0) {
                     size = lastPieceSize;
                 }
                 byte[] data = new byte[size];
@@ -182,7 +182,7 @@ public class TorrentFile {
                 File f = new File(file.getPath()+"_"+i+".par");
                 FileInputStream fis = new FileInputStream(f);
                 int size = pieceSize;
-                if (i == pieceCount - 1) {
+                if (i == pieceCount - 1 && lastPieceSize != 0) {
                     size = lastPieceSize;
                 }
                 byte[] data = new byte[size];
@@ -199,17 +199,20 @@ public class TorrentFile {
     }
     
         public static void main(String args[]) {
+            
             File file = new File("peer_1001/thefile");
             TorrentFile torrentFile = new TorrentFile("thefile", 2167705, 16384, file);
             torrentFile.setBitfield(new BitfieldObj(torrentFile.pieceCount));
             
             File file2 = new File("peer_1002/thefile");
             TorrentFile tf2 = new TorrentFile("thefile", 2167705, 16384, file2);
-            tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount));
+            tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount, true));
 
-            PieceObj pieceObj = torrentFile.getPiece(2);
-            tf2.writePieceToFile(pieceObj);
-            PieceObj po = tf2.getPiece(2);
-            po.printContent();
+            tf2.combineParFiles();
+
+            // PieceObj pieceObj = torrentFile.getPiece(132);
+            // tf2.writePieceToFile(pieceObj);
+            // PieceObj po = tf2.getPiece(132);
+            // po.printContent();
         }
 }

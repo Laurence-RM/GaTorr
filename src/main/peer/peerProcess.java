@@ -207,7 +207,7 @@ public class peerProcess {
                 e.printStackTrace();
             }
 
-            pieceCount = (int) Math.ceil(this.fileSize / this.pieceSize); // Number of pieces
+            pieceCount = (int) Math.ceil((float) this.fileSize / this.pieceSize); // Number of pieces
             lastPieceSize = this.fileSize % this.pieceSize; // Find remainder size of last piece
         }
         
@@ -412,6 +412,9 @@ public class peerProcess {
                             synchronized(requestedPieces) {
                                 int i = 0;
                                 for (Boolean b : p.bf) {
+                                    if (i == 131) {
+                                        System.out.println("");
+                                    }
                                     if (b && !bitfield.checkBit(i) && !requestedPieces.contains((Integer) i)) {
                                         p.wantedPieces.add(i);
                                     }
@@ -472,9 +475,9 @@ public class peerProcess {
                             torrentFile.writePieceToFile(piece);
                             writeToLog(String.format("has downloaded the piece %d from %d. Now the number of pieces it has is %d.", piece_msg.getIndex(), p.ID, bitfield.numberOfFinishedPieces()));                            
                 
-                            synchronized(requestedPieces) {
-                                requestedPieces.remove((Integer) piece_msg.getIndex());
-                            }
+                            // synchronized(requestedPieces) {
+                            //     requestedPieces.remove((Integer) piece_msg.getIndex());
+                            // }
                             p.wantedPieces.remove((Integer) piece_msg.getIndex());
 
                             // Request more pieces

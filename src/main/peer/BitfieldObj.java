@@ -43,7 +43,11 @@ public class BitfieldObj implements Iterable<Boolean> {
     }
 
     public int getLength() {
-        return data.length*8 - leftoverBits;
+        int len = data.length*8;
+        if (leftoverBits > 0) {
+            len -= 8-leftoverBits;
+        }
+        return len;
     }
 
     public boolean checkBit(int index) {
@@ -76,15 +80,8 @@ public class BitfieldObj implements Iterable<Boolean> {
 
     public boolean isComplete() {
         // Check full bytes
-        for (int i = 0; i < data.length-1; i++) {
-            if (data[i] != -1) {
-                return false;
-            }
-        }
-
-        // Check last incomplete byte
-        for (int j = 0; j < leftoverBits; j++) {
-            if (!checkBit((data.length-1)*8 + j)) {
+        for (Boolean b : this) {
+            if (!b) {
                 return false;
             }
         }
@@ -141,7 +138,7 @@ public class BitfieldObj implements Iterable<Boolean> {
             private int bitIndex = 0;
 
             public boolean hasNext() {
-                return index < data.length*8-leftoverBits;
+                return index < getLength();
             }
 
             public Boolean next() {
@@ -154,6 +151,29 @@ public class BitfieldObj implements Iterable<Boolean> {
                 return result;
             }
         };
+    }
+
+    public static void main(String[] args) {
+        BitfieldObj bf = new BitfieldObj(8, false);
+        System.out.println(bf.getLength());
+        bf.printData();
+
+        Iterator<Boolean> it = bf.iterator();
+        int i = 0;
+        while (it.hasNext()) {
+            System.out.println("Index: " + i + " = " + it.next());
+            bf.setBit(i);
+            i++;
+        }
+        System.out.println("==========================");
+        int j = 0;
+        for (Boolean b : bf) {
+            System.out.println("Index: " + j + " = " + b);
+            j++;
+
+        }
+        System.out.println(bf.isComplete());
+        bf.printData();
     }
 
 }
