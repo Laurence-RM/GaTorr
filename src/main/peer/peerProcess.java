@@ -50,6 +50,7 @@ public class peerProcess {
     private int pieceCount;
     private int lastPieceSize;
 
+    
     private BitfieldObj bitfield;
     private ArrayList<PeerInfo> priorPeers;
 
@@ -109,12 +110,10 @@ public class peerProcess {
         protected void finalize() {
             try {
                 this.connection.close();
-            } catch (IOException e) {
+                System.out.printf("Connection with peer %s closed from %s:%d\n", this.ID, this.hostname, this.port);
+            } catch (Exception e) {
                 System.out.println("No connection with peer "+ID+" to close.");
                 return;
-            }
-            finally {
-                System.out.printf("Connection with peer %s closed from %s:%d\n", this.ID, this.hostname, this.port);
             }
         }
 
@@ -314,12 +313,18 @@ public class peerProcess {
                 return;
             }
 
-            Random rand = new Random();
-            int piece_index = p.wantedPieces.get(rand.nextInt(p.wantedPieces.size()));
-            p.sendMessage(new Request(piece_index));
-            synchronized(requestedPieces) {
-                if (!requestedPieces.contains(piece_index)) {
-                    requestedPieces.add(piece_index);
+            while (true) {
+                Random rand = new Random();
+                int piece_index = p.wantedPieces.get(rand.nextInt(p.wantedPieces.size()));
+                synchronized(requestedPieces) {
+                    if (!requestedPieces.contains(piece_index)) {
+                        p.sendMessage(new Request(piece_index));
+                        requestedPieces.add(piece_index);
+                        break;
+                    }
+                    else {
+                        continue;
+                    }
                 }
             }
         }
@@ -399,9 +404,7 @@ public class peerProcess {
                             p.chokedby = true;
 
                             // Assume requests are forgetten after choke?
-                            synchronized(requestedPieces) {
-                                requestedPieces.clear();
-                            }
+                            // TODO: Handle forgotten requests
                             break;
                         case Message.UNCHOKE:
                             // Handle unchoke
@@ -412,11 +415,10 @@ public class peerProcess {
                             synchronized(requestedPieces) {
                                 int i = 0;
                                 for (Boolean b : p.bf) {
-                                    if (i == 131) {
-                                        System.out.println("");
-                                    }
-                                    if (b && !bitfield.checkBit(i) && !requestedPieces.contains((Integer) i)) {
-                                        p.wantedPieces.add(i);
+                                    synchronized(bitfield) {
+                                        if (b && !bitfield.checkBit(i) && !requestedPieces.contains((Integer) i)) {
+                                            p.wantedPieces.add(i);
+                                        }
                                     }
                                     i++;
                                 }
@@ -445,14 +447,15 @@ public class peerProcess {
                             p.bf.setBit(have_msg.getIndex());
 
                             // Check if interested
-                            if (!bitfield.checkBit(have_msg.getIndex())) {
-                                p.sendMessage(new Interested());
-                                System.out.println("Sending interested msg to " + p.ID + " for piece " + have_msg.getIndex());
-                            } else {
-                                p.sendMessage(new NotInterested());
-                                System.out.println("Sending not interested msg to " + p.ID + " for piece " + have_msg.getIndex());
+                            synchronized(bitfield) {
+                                if (!bitfield.checkBit(have_msg.getIndex())) {
+                                    p.sendMessage(new Interested());
+                                    System.out.println("Sending interested msg to " + p.ID + " for piece " + have_msg.getIndex());
+                                } else {
+                                    p.sendMessage(new NotInterested());
+                                    System.out.println("Sending not interested msg to " + p.ID + " for piece " + have_msg.getIndex());
+                                }
                             }
-                            
                             break;
                         case Message.BITFIELD:
                             // Handle bitfield
@@ -473,7 +476,9 @@ public class peerProcess {
                             // Write to file
                             PieceObj piece = torrentFile.new PieceObj(piece_msg);
                             torrentFile.writePieceToFile(piece);
-                            writeToLog(String.format("has downloaded the piece %d from %d. Now the number of pieces it has is %d.", piece_msg.getIndex(), p.ID, bitfield.numberOfFinishedPieces()));                            
+                            synchronized(bitfield) {
+                                writeToLog(String.format("has downloaded the piece %d from %d. Now the number of pieces it has is %d.", piece_msg.getIndex(), p.ID, bitfield.numberOfFinishedPieces()));                            
+                            }
                 
                             // synchronized(requestedPieces) {
                             //     requestedPieces.remove((Integer) piece_msg.getIndex());
@@ -487,7 +492,6 @@ public class peerProcess {
 
                             if (torrentFile.isComplete()) {
                                 writeToLog("has downloaded the complete file.");
-                                System.exit(0);
                             }
                             break;
                         default:
