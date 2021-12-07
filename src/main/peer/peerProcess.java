@@ -20,7 +20,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.Scanner;
+import java.util.prefs.PreferencesFactory;
 
+import main.peer.PreferredHandler.OptimisticHandler;
 import main.peer.TorrentFile.PieceObj;
 import main.peer.message.*;
 
@@ -59,7 +61,8 @@ public class peerProcess {
     private SimpleDateFormat dateFormat;
 
     private TorrentFile torrentFile;
-    List<Integer> requestedPieces = Collections.synchronizedList(new ArrayList<Integer>());
+    protected List<Integer> requestedPieces = Collections.synchronizedList(new ArrayList<Integer>());
+    protected PreferredHandler preferredHandler;
 
     public void writeToLog(String msg) {
         // Will append Date + PeerID + Message to log file
@@ -90,8 +93,10 @@ public class peerProcess {
         public DataOutputStream out;
         public Socket connection;
 
-        public boolean choking = true;
-        public boolean chokedby = true;
+        public boolean isChoking = true;
+        public boolean isChokedby = true;
+        public boolean isInterested = false;
+        public int downloadRate = 0;
 
         ArrayList<Integer> wantedPieces = new ArrayList<Integer>();
 
@@ -212,6 +217,9 @@ public class peerProcess {
         
         // Read peer cfg
         readPeerInfo();
+        preferredHandler = new PreferredHandler(null, this.numPreferredNeighbors, this.unchokingInterval, this.optimisticUnchokingInterval, this.bitfield.isComplete());
+        preferredHandler.start();
+        preferredHandler.new OptimisticHandler().start();
     }
     
     public int getPeerID() {
@@ -301,6 +309,7 @@ public class peerProcess {
             p.establishConnection(connection);
             p.hostname = connection.getRemoteSocketAddress().toString();
             p.port = connection.getPort();
+            priorPeers.add(p);
         }
 
         public Handler(PeerInfo p_) {
@@ -382,6 +391,7 @@ public class peerProcess {
                     System.out.println("Sending not interested msg to " + p.ID);
                 }
 
+                preferredHandler.addNeighbor(p);
 
                 // Wait for other messages
                 while(true) {
@@ -401,7 +411,7 @@ public class peerProcess {
                         case Message.CHOKE:
                             // Handle choke msg here
                             writeToLog("is choked by " + p.ID);
-                            p.chokedby = true;
+                            p.isChokedby = true;
 
                             // Assume requests are forgetten after choke?
                             // TODO: Handle forgotten requests
@@ -409,7 +419,7 @@ public class peerProcess {
                         case Message.UNCHOKE:
                             // Handle unchoke
                             writeToLog("is unchoked by " + p.ID);
-                            p.chokedby = false;
+                            p.isChokedby = false;
                             p.wantedPieces.clear();
 
                             synchronized(requestedPieces) {
@@ -430,13 +440,12 @@ public class peerProcess {
                         case Message.INTERESTED:
                             // Handle interested
                             writeToLog("received the 'interested' message from " + p.ID);
-
-                            // Send pieces if neighbor
-                            p.sendMessage(new Unchoke());
+                            p.isInterested = true;
                             break; 
                         case Message.NOTINTERESTED:
                             // Handle notinterested
                             writeToLog("received the 'not interested' message from " + p.ID);
+                            p.isInterested = false;
                             break;
                         case Message.HAVE:
                             // Handle have
@@ -448,18 +457,15 @@ public class peerProcess {
 
                             // Check if interested
                             synchronized(bitfield) {
-                                if (!bitfield.checkBit(have_msg.getIndex())) {
+                                if (!bitfield.checkBit(have_msg.getIndex()) && !p.isInterested) {
                                     p.sendMessage(new Interested());
-                                    System.out.println("Sending interested msg to " + p.ID + " for piece " + have_msg.getIndex());
-                                } else {
-                                    p.sendMessage(new NotInterested());
-                                    System.out.println("Sending not interested msg to " + p.ID + " for piece " + have_msg.getIndex());
                                 }
                             }
                             break;
                         case Message.BITFIELD:
                             // Handle bitfield
                             System.out.println("Received bitfield msg from " + p.ID);
+                            p.bf = new BitfieldObj(msg.getPayload(), pieceCount);
                             // Note: should not be receiving more bitfields after first
                             break;  
                         case Message.REQUEST:
@@ -479,20 +485,32 @@ public class peerProcess {
                             synchronized(bitfield) {
                                 writeToLog(String.format("has downloaded the piece %d from %d. Now the number of pieces it has is %d.", piece_msg.getIndex(), p.ID, bitfield.numberOfFinishedPieces()));                            
                             }
+
+                            // Update Download rate
+                            p.downloadRate += 1;
                 
                             // synchronized(requestedPieces) {
                             //     requestedPieces.remove((Integer) piece_msg.getIndex());
                             // }
                             p.wantedPieces.remove((Integer) piece_msg.getIndex());
 
-                            // Request more pieces
-                            if (!p.chokedby) {
+                            if (!p.bf.hasPiece(bitfield)) {
+                                // Check if still interested
+                                p.sendMessage(new NotInterested());
+                            } else if (!p.isChokedby) {
+                                // Request more pieces
                                 requestRandomWantedPiece();
+                            }
+
+                            // TODO: send HAVE message to all neighbors
+                            for (PeerInfo p : priorPeers) {
+                                p.sendMessage(new Have(piece_msg.getIndex()));
                             }
 
                             if (torrentFile.isComplete()) {
                                 writeToLog("has downloaded the complete file.");
                             }
+
                             break;
                         default:
                             // Could not identify message type
