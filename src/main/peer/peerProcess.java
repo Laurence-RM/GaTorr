@@ -83,7 +83,7 @@ public class peerProcess {
     }
 
     public class PeerInfo {
-        public int ID;  // TODO: Should ID be string to store leading zeros?
+        public int ID;
         public String hostname;
         public int port;
         public boolean complete = false;
@@ -116,6 +116,8 @@ public class peerProcess {
             try {
                 this.connection.close();
                 System.out.printf("Connection with peer %s closed from %s:%d\n", this.ID, this.hostname, this.port);
+                System.exit(1);
+
             } catch (Exception e) {
                 System.out.println("No connection with peer "+ID+" to close.");
                 return;
@@ -217,7 +219,7 @@ public class peerProcess {
         
         // Read peer cfg
         readPeerInfo();
-        preferredHandler = new PreferredHandler(null, this.numPreferredNeighbors, this.unchokingInterval, this.optimisticUnchokingInterval, this.bitfield.isComplete());
+        preferredHandler = new PreferredHandler(null, this, this.numPreferredNeighbors, this.unchokingInterval, this.optimisticUnchokingInterval, this.bitfield.isComplete());
         preferredHandler.start();
         preferredHandler.new OptimisticHandler().start();
     }
@@ -255,7 +257,7 @@ public class peerProcess {
                     this.port = p.port;
                     // Prepare torrent file
                     pf = new File(pf, fileName);
-                    this.torrentFile = new TorrentFile(fileName, fileSize, pieceSize, pf);
+                    this.torrentFile = new TorrentFile(fileSize, pieceSize, pf);
                     // Prepare Bitfield
                     if (p.complete) {
                         this.bitfield = new BitfieldObj(pieceCount, true);    
@@ -357,7 +359,7 @@ public class peerProcess {
                             // Received peer ID does not match expected ID
                             System.out.printf("ERROR: Expected peer %d but received %d during Handshake", p.ID, id_in);
                         } else {
-                            System.out.println("Handshake from " + p.ID + " confirmed.");
+                            System.out.println("Connected to " + p.ID + ".");
                         }
                     }
                 } else {
@@ -378,17 +380,13 @@ public class peerProcess {
                     byte[] bf_data = new byte[len-1];
                     p.in.readFully(bf_data);
                     p.bf = new BitfieldObj(bf_data, pieceCount);
-                    System.out.printf("Bitfield received from peer %d\n", p.ID);
-                    //p.bf.printData();
                 }
                 
                 // Send Interested or Not Interested based on bitfield
                 if (p.bf.hasPiece(bitfield)) {
                     p.sendMessage(new Interested());
-                    System.out.println("Sending interested msg to " + p.ID);
                 } else {
                     p.sendMessage(new NotInterested());
-                    System.out.println("Sending not interested msg to " + p.ID);
                 }
 
                 preferredHandler.addNeighbor(p);
@@ -446,6 +444,17 @@ public class peerProcess {
                             // Handle notinterested
                             writeToLog("received the 'not interested' message from " + p.ID);
                             p.isInterested = false;
+
+                            boolean allFinished = true;
+                            for (PeerInfo p : priorPeers) {
+                                if (p.isInterested) {
+                                    allFinished = false;
+                                }
+                            }
+                            if (torrentFile.isComplete() && allFinished) {
+                                System.out.println("All peers and self have finished downloading, exiting...");
+                                System.exit(0);
+                            }
                             break;
                         case Message.HAVE:
                             // Handle have
@@ -464,7 +473,6 @@ public class peerProcess {
                             break;
                         case Message.BITFIELD:
                             // Handle bitfield
-                            System.out.println("Received bitfield msg from " + p.ID);
                             p.bf = new BitfieldObj(msg.getPayload(), pieceCount);
                             // Note: should not be receiving more bitfields after first
                             break;  
@@ -502,7 +510,6 @@ public class peerProcess {
                                 requestRandomWantedPiece();
                             }
 
-                            // TODO: send HAVE message to all neighbors
                             for (PeerInfo p : priorPeers) {
                                 p.sendMessage(new Have(piece_msg.getIndex()));
                             }
@@ -520,6 +527,15 @@ public class peerProcess {
                 }
             } catch (IOException e) {
                 System.out.println("Peer "+p.ID+" disconnected.");
+                if (torrentFile.isComplete()) {
+                    System.out.println("File finished downloading, exiting...");
+                    System.exit(0);
+                }
+                System.out.println("Download Interrupted, exiting...");
+                System.exit(0);
+                // preferredHandler.removeNeighbor(p);
+                // priorPeers.remove(p);
+                return;
             }
         }
     }
@@ -529,13 +545,13 @@ public class peerProcess {
         // Check configs
         // Send HS to prior peers (or skip if none)
         // Wait for responses
+
         try{
             peerProcess peer = new peerProcess(Integer.parseInt(args[0]));
             ServerSocket listener = new ServerSocket(peer.port);
 
             for (PeerInfo p : peer.priorPeers) {
                 int connectionAttempts = 0;
-                System.out.println("Attempting handshake with peer " + p.ID);
                 while (true) {
                     // Connect to peer
                     p.establishConnection();
@@ -567,10 +583,14 @@ public class peerProcess {
             } finally {
                 listener.close();
             }
-            
+        } catch (ArrayIndexOutOfBoundsException e) {
+            System.out.println("Improper args. Missing numerical Peer ID");
+        } catch (IOException e) {
+            System.out.println("Could not open port. " + e.getMessage());
+        } catch (InterruptedException e) {
+            System.out.println("Interrupted while waiting for connection");
         } catch (Exception e) {
-            e.printStackTrace();
-            //System.out.println("Improper args. Missing numerical Peer ID");
+            System.out.println("Error: " + e.getMessage());
         }
     }
 }

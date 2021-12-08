@@ -45,7 +45,6 @@ public class TorrentFile {
         }
     }
 
-    private String fileName;
     private int fileSize;
     private int pieceSize;
     private int pieceCount;
@@ -56,8 +55,7 @@ public class TorrentFile {
     private int parCount;
     private BitfieldObj bitfield;
 
-    public TorrentFile(String fileName, int fileSize, int pieceSize, File file_, BitfieldObj bitfield_) {
-        this.fileName = fileName;
+    public TorrentFile(int fileSize, int pieceSize, File file_, BitfieldObj bitfield_) {
         this.fileSize = fileSize;
         this.pieceSize = pieceSize;
         this.pieceCount = (int) Math.ceil((float) fileSize / pieceSize);
@@ -71,8 +69,8 @@ public class TorrentFile {
         }
     }
 
-    public TorrentFile(String fileName, int fileSize, int pieceSize, File file_) {
-        this(fileName, fileSize, pieceSize, file_, null);
+    public TorrentFile(int fileSize, int pieceSize, File file_) {
+        this(fileSize, pieceSize, file_, null);
     }
 
 
@@ -201,11 +199,11 @@ public class TorrentFile {
         public static void main(String args[]) {
             
             File file = new File("peer_1001/thefile");
-            TorrentFile torrentFile = new TorrentFile("thefile", 2167705, 16384, file);
+            TorrentFile torrentFile = new TorrentFile(2167705, 16384, file);
             torrentFile.setBitfield(new BitfieldObj(torrentFile.pieceCount));
             
             File file2 = new File("peer_1002/thefile");
-            TorrentFile tf2 = new TorrentFile("thefile", 2167705, 16384, file2);
+            TorrentFile tf2 = new TorrentFile(2167705, 16384, file2);
             tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount, true));
 
             tf2.combineParFiles();

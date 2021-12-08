@@ -16,6 +16,7 @@ public class PreferredHandler extends Thread {
     }
     
     private HashMap<PeerInfo, Type> neighbors;
+    private peerProcess process;
     private int numPreferredNeighbors;
     private int unchokeInterval;
     private int optimisticInterval;
@@ -23,8 +24,9 @@ public class PreferredHandler extends Thread {
 
     Random rnd = new Random();
 
-    public PreferredHandler(PeerInfo[] peers, int numPreferredNeighbors_, int unchokeInterval_, int optimisticInterval_, boolean complete_) {
-        neighbors = new HashMap<PeerInfo, Type>();
+    public PreferredHandler(PeerInfo[] peers, peerProcess process_, int numPreferredNeighbors_, int unchokeInterval_, int optimisticInterval_, boolean complete_) {
+        this.neighbors = new HashMap<PeerInfo, Type>();
+        this.process = process_;
         this.numPreferredNeighbors = numPreferredNeighbors_;
         this.unchokeInterval = unchokeInterval_;
         this.optimisticInterval = optimisticInterval_;
@@ -39,8 +41,16 @@ public class PreferredHandler extends Thread {
     }
 
     public void addNeighbor(PeerInfo peer) {
-        if (!neighbors.containsKey(peer)) {
-            neighbors.put(peer, Type.CHOKED);
+        synchronized (neighbors) {
+            if (!neighbors.containsKey(peer)) {
+                neighbors.put(peer, Type.CHOKED);
+            }
+        }
+    }
+
+    public void removeNeighbor(PeerInfo p) {
+        synchronized (neighbors) {
+            neighbors.remove(p);
         }
     }
 
@@ -103,6 +113,7 @@ public class PreferredHandler extends Thread {
                 // sort by download rate
                 potentialPreferredNeighbors.sort((p1, p2) -> p1.downloadRate > p2.downloadRate ? 1 : -1);
 
+                boolean peersChanged = false;
                 for (int i = 0; i < numPreferredNeighbors; i++) {
                     if (potentialPreferredNeighbors.size() > 0) {
                         PeerInfo peer;
@@ -110,10 +121,14 @@ public class PreferredHandler extends Thread {
                             peer = potentialPreferredNeighbors.get(rnd.nextInt(potentialPreferredNeighbors.size()));
                         } else {
                             // TODO: Get random if other peers have same download rate
-                            peer = potentialPreferredNeighbors.get(i);
+                            peer = potentialPreferredNeighbors.get(0);
+                        }
+                        // Check if peers changed
+                        if (neighbors.get(peer) != Type.PREFERRED) {
+                            peersChanged = true;
                         }
                         setPreferred(peer);
-                        potentialPreferredNeighbors.remove(peer);
+                        potentialPreferredNeighbors.remove(0);
                     } else {
                         break;
                     }
@@ -125,8 +140,17 @@ public class PreferredHandler extends Thread {
                     }
                 }
 
+                ArrayList<String> logNeighbors = new ArrayList<String>();
+
                 for (PeerInfo peer : neighbors.keySet()) {
+                    if (neighbors.get(peer) == Type.PREFERRED) {
+                        logNeighbors.add(Integer.toString(peer.ID));
+                    }
                     peer.downloadRate = 0;
+                }
+
+                if (peersChanged) {
+                    process.writeToLog("has the preferred neighbors " + String.join(", ", logNeighbors));
                 }
                 Thread.sleep(unchokeInterval * 1000);
             } catch (InterruptedException e) {
@@ -146,12 +170,18 @@ public class PreferredHandler extends Thread {
                     }
 
                     ArrayList<PeerInfo> potentialOpts = new ArrayList<PeerInfo>();
+                    PeerInfo oldOptPeer = null;
 
                     // Populate list with choked and interested peers
                     for (PeerInfo peer : neighbors.keySet()) {
                         if (neighbors.get(peer) == Type.OPTIMISTIC) {
-                            setChoked(peer);
+                            oldOptPeer = peer;
+                            if (peer.isInterested) {
+                                potentialOpts.add(peer);
+                            }
+                            continue;
                         }
+
                         if (isChoked(peer) && peer.isInterested) {
                             potentialOpts.add(peer);
                         }
@@ -160,7 +190,13 @@ public class PreferredHandler extends Thread {
                     // Set random optimistic neighbor
                     if (potentialOpts.size() > 0) {
                         PeerInfo optimistic = potentialOpts.get(rnd.nextInt(potentialOpts.size()));
-                        setOptimistic(optimistic);
+                        if (neighbors.get(optimistic) != Type.OPTIMISTIC) {
+                            if (oldOptPeer != null) {
+                                setChoked(oldOptPeer);
+                            }
+                            setOptimistic(optimistic);
+                            process.writeToLog("has the optimistically unchoked neighbor " + optimistic.ID + ".");
+                        }
                     }
                     Thread.sleep(optimisticInterval * 1000);
                 } catch (InterruptedException e) {
@@ -169,5 +205,6 @@ public class PreferredHandler extends Thread {
             }
         }
     }
+
     
 }
