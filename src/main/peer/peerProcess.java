@@ -16,8 +16,10 @@ package main.peer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.prefs.PreferencesFactory;
@@ -41,27 +43,27 @@ public class peerProcess {
     private int peerID;
     private String hostName;
     private int port;
-
+    
     private int numPreferredNeighbors;
     private int unchokingInterval;
     private int optimisticUnchokingInterval;
     private String fileName;
     private int fileSize;
     private int pieceSize;
-
+    
     private int pieceCount;
     private int lastPieceSize;
-
+    
     
     private BitfieldObj bitfield;
     private ArrayList<PeerInfo> priorPeers;
-
+    
     private File logFile;
     private FileOutputStream logStream;
     private SimpleDateFormat dateFormat;
-
+    
     private TorrentFile torrentFile;
-    protected List<Integer> requestedPieces = Collections.synchronizedList(new ArrayList<Integer>());
+    protected Map<Integer, Integer> requestedPieces = Collections.synchronizedMap(new HashMap<Integer, Integer>());
     protected PreferredHandler preferredHandler;
 
     public void writeToLog(String msg) {
@@ -114,9 +116,12 @@ public class peerProcess {
 
         protected void finalize() {
             try {
-                this.connection.close();
-                System.out.printf("Connection with peer %s closed from %s:%d\n", this.ID, this.hostname, this.port);
-                System.exit(1);
+                if (connection != null) {
+                    connection.close();
+                }
+                if (this.ID != peerID) {
+                    System.out.printf("Connection with peer %s closed from %s:%d\n", this.ID, this.hostname, this.port);
+                }
 
             } catch (Exception e) {
                 System.out.println("No connection with peer "+ID+" to close.");
@@ -327,10 +332,11 @@ public class peerProcess {
             while (true) {
                 Random rand = new Random();
                 int piece_index = p.wantedPieces.get(rand.nextInt(p.wantedPieces.size()));
+
                 synchronized(requestedPieces) {
-                    if (!requestedPieces.contains(piece_index)) {
+                    if (!requestedPieces.keySet().contains(piece_index)) {
                         p.sendMessage(new Request(piece_index));
-                        requestedPieces.add(piece_index);
+                        requestedPieces.put(piece_index, p.ID);
                         break;
                     }
                     else {
@@ -351,6 +357,7 @@ public class peerProcess {
                 if (id_in != -1) {
                     if (!shook) {
                         writeToLog(String.format("is connected from Peer %d", id_in));
+                        System.out.println("Peer " + id_in + " is connected.");
                         //Send back handshake
                         p.sendMessage(new Handshake(peerID));
                         p.ID = id_in;
@@ -359,7 +366,7 @@ public class peerProcess {
                             // Received peer ID does not match expected ID
                             System.out.printf("ERROR: Expected peer %d but received %d during Handshake", p.ID, id_in);
                         } else {
-                            System.out.println("Connected to " + p.ID + ".");
+                            System.out.println("Connected to peer " + p.ID + ".");
                         }
                     }
                 } else {
@@ -411,8 +418,12 @@ public class peerProcess {
                             writeToLog("is choked by " + p.ID);
                             p.isChokedby = true;
 
-                            // Assume requests are forgetten after choke?
-                            // TODO: Handle forgotten requests
+                            // Remove all hanging requests from this peer
+                            for (Integer p_num : requestedPieces.keySet()) {
+                                if (requestedPieces.get(p_num) == p.ID) {
+                                    requestedPieces.remove(p_num);
+                                }
+                            }
                             break;
                         case Message.UNCHOKE:
                             // Handle unchoke
@@ -424,7 +435,7 @@ public class peerProcess {
                                 int i = 0;
                                 for (Boolean b : p.bf) {
                                     synchronized(bitfield) {
-                                        if (b && !bitfield.checkBit(i) && !requestedPieces.contains((Integer) i)) {
+                                        if (b && !bitfield.checkBit(i) && !requestedPieces.keySet().contains(i)) {
                                             p.wantedPieces.add(i);
                                         }
                                     }
@@ -497,9 +508,6 @@ public class peerProcess {
                             // Update Download rate
                             p.downloadRate += 1;
                 
-                            // synchronized(requestedPieces) {
-                            //     requestedPieces.remove((Integer) piece_msg.getIndex());
-                            // }
                             p.wantedPieces.remove((Integer) piece_msg.getIndex());
 
                             if (!p.bf.hasPiece(bitfield)) {
@@ -569,8 +577,8 @@ public class peerProcess {
                     } else {
                         // Could not connect to peer
                         connectionAttempts++;
-                        System.out.println("("+connectionAttempts+"/10) Retrying handshake with peer " + p.ID + " in 5 seconds...");
-                        Thread.sleep(5000);
+                        System.out.println("("+connectionAttempts+"/10) Retrying handshake with peer " + p.ID + " in 1 second...");
+                        Thread.sleep(1000);
                         continue;
                     }
                 }
