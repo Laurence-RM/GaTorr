@@ -164,7 +164,7 @@ public class TorrentFile {
             throw new RuntimeException("Bitfield reference in torrent file is null");
         }
         this.bitfield.setBit(index);
-        if (parCount == pieceCount) {
+        if (bitfield.isComplete()) {
             combineParFiles();
         }
     }

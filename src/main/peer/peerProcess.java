@@ -308,7 +308,7 @@ public class peerProcess {
         }
     }
 
-    protected synchronized void checkAllPeersComplete() {
+    protected void checkAllPeersComplete() {
         if (numFinished == maxPeers && torrentFile.isComplete()) {
             System.out.println("All peers have finished downloading, exiting...");
             System.exit(0);
@@ -506,7 +506,6 @@ public class peerProcess {
                             }
 
                             if (p.bf.isComplete()) {
-                                System.out.println(String.format("Peer %d has finished downloading", p.ID));
                                 numFinished++;
                                 checkAllPeersComplete();
                             }
@@ -553,7 +552,6 @@ public class peerProcess {
 
                             if (torrentFile.isComplete()) {
                                 writeToLog("has downloaded the complete file.");
-                                checkAllPeersComplete();
                             }
 
                             break;
@@ -603,7 +601,6 @@ public class peerProcess {
 
             int numPeers = lines.size() - 1;
             peer.maxPeers = numPeers;
-            int connectedPeers = 0;          
             for (PeerInfo p : peer.priorPeers) {
                 int connectionAttempts = 0;
                 while (true) {
