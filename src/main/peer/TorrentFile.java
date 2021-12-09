@@ -84,7 +84,7 @@ public class TorrentFile {
 
     protected PieceObj getPieceFromFile(int index) {
         // Check file is complete
-        if (!fileComplete) {
+        if (!isComplete()) {
             return null;
         }
 
@@ -130,7 +130,7 @@ public class TorrentFile {
     }
 
     public PieceObj getPiece(int index) {
-        if (fileComplete) {
+        if (isComplete() || file.exists()) {
             return getPieceFromFile(index);
         } else {
             return getPieceFromPar(index);
@@ -139,7 +139,7 @@ public class TorrentFile {
     
     public void writePieceToFile(PieceObj pieceObj) {
         // Check file is complete
-        if (fileComplete) {
+        if (isComplete()) {
             return;
         }
         
@@ -164,13 +164,13 @@ public class TorrentFile {
             throw new RuntimeException("Bitfield reference in torrent file is null");
         }
         this.bitfield.setBit(index);
-        if (parCount == pieceCount && bitfield.isComplete()) {
+        if (parCount == pieceCount) {
             combineParFiles();
         }
     }
     
     public void combineParFiles() {
-        if (fileComplete) {
+        if (isComplete()) {
             return;
         }
         
@@ -190,21 +190,21 @@ public class TorrentFile {
                 f.delete();
             }
             fos.close();
+            this.fileComplete = true;
         } catch (Exception e) {
             e.printStackTrace();
         }
-        this.fileComplete = true;
     }
     
         public static void main(String args[]) {
             
-            File file = new File("peer_1001/thefile");
-            TorrentFile torrentFile = new TorrentFile(2167705, 16384, file);
-            torrentFile.setBitfield(new BitfieldObj(torrentFile.pieceCount));
+            File file = new File("peer_1001/tree.jpg");
+            TorrentFile torrentFile = new TorrentFile(24301474, 16384, file);
+            torrentFile.setBitfield(new BitfieldObj(torrentFile.pieceCount, true));
             
-            File file2 = new File("peer_1002/thefile");
-            TorrentFile tf2 = new TorrentFile(2167705, 16384, file2);
-            tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount, true));
+            File file2 = new File("peer_1002/tree.jpg");
+            TorrentFile tf2 = new TorrentFile(24301474, 16384, file2);
+            tf2.setBitfield(new BitfieldObj(torrentFile.pieceCount));
 
             tf2.combineParFiles();
 
