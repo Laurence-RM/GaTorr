@@ -27,3 +27,5 @@ src/test/Client.java
 src/test/Server.java
 
 peer_*
+wipe.sh
+startPeers.sh
